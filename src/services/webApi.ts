@@ -185,28 +185,28 @@ export function embedTexts(req: EmbedRequest): Promise<number[][]> {
 
 // ---------- MCP ----------
 
-// MCP runs stdio subprocesses, which a browser can't. Degrade gracefully:
-// the web shell simply has no connected servers / tools (rather than throwing
-// and crashing flows like "new chat" that query the tool list). Server-side
-// MCP can be wired into taffy-web later.
-export function mcpConnect(_config: McpServerConfig): Promise<McpTool[]> {
-  return Promise.resolve([])
+// MCP stdio subprocesses run on the *server* (a browser can't spawn them); the
+// taffy-web shell hosts the connections and exposes them over /api/mcp. The
+// spawned commands must exist in the server's environment (e.g. node/npx in a
+// container image), otherwise connect() fails like any bad command.
+export function mcpConnect(config: McpServerConfig): Promise<McpTool[]> {
+  return postJson<McpTool[]>('/api/mcp/connect', config)
 }
 
-export function mcpDisconnect(_id: string): Promise<void> {
-  return Promise.resolve()
+export function mcpDisconnect(id: string): Promise<void> {
+  return send('/api/mcp/disconnect', 'POST', { id })
 }
 
 export function mcpListTools(): Promise<McpTool[]> {
-  return Promise.resolve([])
+  return getJson<McpTool[]>('/api/mcp/tools')
 }
 
 export function mcpCallTool(
-  _serverId: string,
-  _name: string,
-  _args: unknown,
+  serverId: string,
+  name: string,
+  args: unknown,
 ): Promise<string> {
-  return notImpl('mcpCallTool')
+  return postJson<string>('/api/mcp/call', { serverId, name, args })
 }
 
 // ---------- storage / backups ----------

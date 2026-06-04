@@ -22,6 +22,18 @@ reqwest = { version = "0.12", default-features = false, features = [
 # both shells (Tauri Channel adapter, axum SSE) can consume it.
 futures-util = "0.3"
 async-stream = "0.3"
+# MCP stdio client: `process` + `io-util` spawn each server and read/write its
+# pipes; `sync` + `time` back the request/response oneshot map + timeouts; `rt`
+# + `macros` let the agentic loop spawn the background reader task.
+tokio = { version = "1", features = [
+  "rt",
+  "rt-multi-thread",
+  "process",
+  "io-util",
+  "sync",
+  "time",
+  "macros",
+] }
 # Data layer: bundled SQLite (with FTS5) so neither shell needs a system lib.
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }

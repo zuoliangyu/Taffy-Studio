@@ -629,6 +629,357 @@ pub fn chat_stream(req: ChatRequest) -> impl Stream<Item = StreamEvent> {
     }
 }
 
+// ---------- Agentic tool-use loop ----------
+//
+// When a request carries `tools`, we run a non-streaming round loop instead of
+// the token stream: ask the model (with tools), execute any tool calls via the
+// MCP layer, feed the results back, and repeat until the model answers without
+// calling a tool (or we hit MAX_TOOL_ROUNDS). The final assistant text is
+// emitted as Token + Done so the existing UI path renders it; tool activity
+// surfaces as ToolCall / ToolResult events.
+//
+// This is a `Stream<StreamEvent>` like `chat_stream`, so both shells consume it
+// identically (Tauri Channel adapter, axum SSE). Cancellation is the consumer's
+// job: stop polling / drop the stream and the in-flight HTTP + the loop stop.
+
+/// Max agentic tool-use rounds before we force a final answer. Guards against a
+/// model that keeps calling tools forever.
+const MAX_TOOL_ROUNDS: usize = 8;
+
+/// Cap a tool result before surfacing it to the UI (the full text still goes
+/// back to the model). Keeps a runaway tool from flooding the event stream.
+const TOOL_RESULT_UI_CAP: usize = 4000;
+
+fn truncate_for_ui(s: &str) -> String {
+    if s.len() <= TOOL_RESULT_UI_CAP {
+        return s.to_string();
+    }
+    let mut end = TOOL_RESULT_UI_CAP;
+    while !s.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}… [{} bytes total]", &s[..end], s.len())
+}
+
+fn tool_server_for<'a>(tools: &'a [ToolSpec], name: &str) -> Option<&'a ToolSpec> {
+    tools.iter().find(|t| t.name == name)
+}
+
+async fn exec_tool(
+    tools: &[ToolSpec],
+    mcp: &crate::mcp::McpState,
+    name: &str,
+    args: serde_json::Value,
+) -> String {
+    match tool_server_for(tools, name) {
+        Some(t) => crate::mcp::call_tool(mcp, &t.server_id, name, args)
+            .await
+            .unwrap_or_else(|e| format!("ERROR: {e}")),
+        None => format!("ERROR: tool '{name}' is not connected"),
+    }
+}
+
+/// Send a request and parse the JSON body, mapping transport / HTTP / parse
+/// failures to a single error string. The caller yields a `StreamEvent::Error`
+/// with it (we can't `yield` from a plain async fn).
+async fn read_json(resp: Result<reqwest::Response, String>) -> Result<serde_json::Value, String> {
+    let resp = resp?;
+    let status = resp.status();
+    if !status.is_success() {
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("HTTP {status}: {text}"));
+    }
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Agentic counterpart to `chat_stream`: drives the MCP tool-use loop and yields
+/// the same `StreamEvent`s. `mcp` is the shared registry of connected servers.
+pub fn agentic_stream(
+    req: ChatRequest,
+    tools: Vec<ToolSpec>,
+    mcp: std::sync::Arc<crate::mcp::McpState>,
+) -> impl Stream<Item = StreamEvent> {
+    async_stream::stream! {
+        let client = match reqwest::Client::builder().build() {
+            Ok(c) => c,
+            Err(e) => {
+                yield StreamEvent::Error { message: e.to_string() };
+                return;
+            }
+        };
+        let kind = provider_kind(&req.provider).to_string();
+        let base = req
+            .base_url
+            .clone()
+            .unwrap_or_else(|| default_base_url(&kind).to_string());
+        let base = base.trim_end_matches('/').to_string();
+        let key = req.api_key.as_deref().unwrap_or("");
+
+        let mut full = String::new();
+
+        if kind == "anthropic" {
+            let (sys, rest) = split_system(&req.messages);
+            let mut messages: Vec<serde_json::Value> =
+                rest.iter().map(|m| anthropic_message(m)).collect();
+            let tools_json: Vec<serde_json::Value> = tools
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.input_schema,
+                    })
+                })
+                .collect();
+
+            for _ in 0..MAX_TOOL_ROUNDS {
+                let mut body = serde_json::json!({
+                    "model": req.model,
+                    "messages": messages,
+                    "max_tokens": req.max_tokens.unwrap_or(4096),
+                    "tools": tools_json,
+                    "stream": false,
+                });
+                if !sys.is_empty() {
+                    body["system"] = serde_json::Value::String(sys.clone());
+                }
+                if let Some(t) = req.temperature {
+                    body["temperature"] = serde_json::json!(t);
+                }
+
+                let mut h = reqwest::header::HeaderMap::new();
+                let parsed_key = match key.parse() {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let e: reqwest::header::InvalidHeaderValue = e;
+                        yield StreamEvent::Error { message: e.to_string() };
+                        return;
+                    }
+                };
+                h.insert("x-api-key", parsed_key);
+                h.insert("anthropic-version", "2023-06-01".parse().unwrap());
+                h.insert("content-type", "application/json".parse().unwrap());
+
+                let resp = client
+                    .post(format!("{base}/v1/messages"))
+                    .headers(h)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string());
+                let json = match read_json(resp).await {
+                    Ok(j) => j,
+                    Err(e) => {
+                        yield StreamEvent::Error { message: e };
+                        return;
+                    }
+                };
+
+                let blocks = json
+                    .get("content")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+                let stop = json
+                    .get("stop_reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
+
+                let mut tool_uses: Vec<serde_json::Value> = Vec::new();
+                for b in &blocks {
+                    match b.get("type").and_then(|v| v.as_str()) {
+                        Some("text") => {
+                            if let Some(t) = b.get("text").and_then(|v| v.as_str()) {
+                                if !t.is_empty() {
+                                    full.push_str(t);
+                                    yield StreamEvent::Token { content: t.into() };
+                                }
+                            }
+                        }
+                        Some("tool_use") => tool_uses.push(b.clone()),
+                        _ => {}
+                    }
+                }
+
+                if stop != "tool_use" || tool_uses.is_empty() {
+                    yield StreamEvent::Done {
+                        content: std::mem::take(&mut full),
+                        model: req.model.clone(),
+                    };
+                    return;
+                }
+
+                messages.push(serde_json::json!({ "role": "assistant", "content": blocks }));
+                let mut results: Vec<serde_json::Value> = Vec::new();
+                for tu in &tool_uses {
+                    let id = tu
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = tu
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let input = tu.get("input").cloned().unwrap_or(serde_json::json!({}));
+                    yield StreamEvent::ToolCall {
+                        id: id.clone(),
+                        server_id: tool_server_for(&tools, &name)
+                            .map(|t| t.server_id.clone())
+                            .unwrap_or_default(),
+                        name: name.clone(),
+                        args: input.to_string(),
+                    };
+                    let out = exec_tool(&tools, &mcp, &name, input).await;
+                    yield StreamEvent::ToolResult {
+                        id: id.clone(),
+                        name: name.clone(),
+                        result: truncate_for_ui(&out),
+                    };
+                    results.push(serde_json::json!({
+                        "type": "tool_result",
+                        "tool_use_id": id,
+                        "content": out,
+                    }));
+                }
+                messages.push(serde_json::json!({ "role": "user", "content": results }));
+            }
+        } else {
+            // OpenAI-compatible.
+            let mut messages: Vec<serde_json::Value> =
+                req.messages.iter().map(openai_message).collect();
+            let tools_json: Vec<serde_json::Value> = tools
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.input_schema,
+                        },
+                    })
+                })
+                .collect();
+
+            for _ in 0..MAX_TOOL_ROUNDS {
+                let mut body = serde_json::json!({
+                    "model": req.model,
+                    "messages": messages,
+                    "tools": tools_json,
+                    "stream": false,
+                });
+                if let Some(t) = req.temperature {
+                    body["temperature"] = serde_json::json!(t);
+                }
+                if let Some(mt) = req.max_tokens {
+                    body["max_tokens"] = serde_json::json!(mt);
+                }
+
+                let mut h = reqwest::header::HeaderMap::new();
+                if !key.is_empty() {
+                    let parsed_key = match format!("Bearer {key}").parse() {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let e: reqwest::header::InvalidHeaderValue = e;
+                            yield StreamEvent::Error { message: e.to_string() };
+                            return;
+                        }
+                    };
+                    h.insert("authorization", parsed_key);
+                }
+                h.insert("content-type", "application/json".parse().unwrap());
+
+                let resp = client
+                    .post(format!("{base}/chat/completions"))
+                    .headers(h)
+                    .json(&body)
+                    .send()
+                    .await
+                    .map_err(|e| e.to_string());
+                let json = match read_json(resp).await {
+                    Ok(j) => j,
+                    Err(e) => {
+                        yield StreamEvent::Error { message: e };
+                        return;
+                    }
+                };
+
+                let msg = json
+                    .pointer("/choices/0/message")
+                    .cloned()
+                    .unwrap_or(serde_json::json!({}));
+                let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                if !content.is_empty() {
+                    full.push_str(content);
+                    yield StreamEvent::Token { content: content.into() };
+                }
+
+                let tool_calls = msg
+                    .get("tool_calls")
+                    .and_then(|v| v.as_array())
+                    .cloned()
+                    .unwrap_or_default();
+
+                if tool_calls.is_empty() {
+                    yield StreamEvent::Done {
+                        content: std::mem::take(&mut full),
+                        model: req.model.clone(),
+                    };
+                    return;
+                }
+
+                messages.push(msg.clone());
+                for tc in &tool_calls {
+                    let id = tc
+                        .get("id")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let name = tc
+                        .pointer("/function/name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
+                    let args_str = tc
+                        .pointer("/function/arguments")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("{}")
+                        .to_string();
+                    yield StreamEvent::ToolCall {
+                        id: id.clone(),
+                        server_id: tool_server_for(&tools, &name)
+                            .map(|t| t.server_id.clone())
+                            .unwrap_or_default(),
+                        name: name.clone(),
+                        args: args_str.clone(),
+                    };
+                    let args_val: serde_json::Value =
+                        serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
+                    let out = exec_tool(&tools, &mcp, &name, args_val).await;
+                    yield StreamEvent::ToolResult {
+                        id: id.clone(),
+                        name: name.clone(),
+                        result: truncate_for_ui(&out),
+                    };
+                    messages.push(serde_json::json!({
+                        "role": "tool",
+                        "tool_call_id": id,
+                        "content": out,
+                    }));
+                }
+            }
+        }
+
+        // Ran out of rounds — emit whatever we have so the user isn't left hanging.
+        yield StreamEvent::Done {
+            content: std::mem::take(&mut full),
+            model: req.model.clone(),
+        };
+    }
+}
+
 pub async fn embed_texts(req: &EmbedRequest) -> Result<Vec<Vec<f32>>, String> {
     if req.input.is_empty() {
         return Ok(vec![]);

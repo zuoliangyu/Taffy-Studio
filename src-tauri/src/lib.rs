@@ -2,8 +2,6 @@
 // platform-specific main that calls into this `run` function — keep all
 // builder setup here so the two targets stay identical.
 
-mod mcp;
-
 use futures_util::StreamExt;
 use serde::Serialize;
 use std::collections::HashMap;
@@ -15,20 +13,13 @@ use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 use tokio::sync::Mutex;
 
-use mcp::{McpServerConfig, McpState, McpTool};
-
-// Core business logic now lives in the platform-agnostic `taffy-core` crate.
-// The streaming / agentic-tool-use loop stays in this shell because it depends
-// on tauri's Channel + Cancellation state; a later milestone lifts it into core.
-use taffy_core::llm::{
-    anthropic_message, build_request, default_base_url, extract_delta, is_terminal,
-    openai_message, parse_sse_line, provider_kind, split_system, Sse,
-};
-use taffy_core::{ChatRequest, ChatResponse, EmbedRequest, StreamEvent, ToolSpec};
-
-/// Max agentic tool-use rounds before we force a final answer. Guards against a
-/// model that keeps calling tools forever.
-const MAX_TOOL_ROUNDS: usize = 8;
+// Core business logic — including the MCP client and the streaming / agentic
+// tool-use loop — now lives in the platform-agnostic `taffy-core` crate. This
+// shell just adapts the core `Stream<StreamEvent>` onto tauri's Channel and
+// layers cancellation on top.
+use taffy_core::llm::provider_kind;
+use taffy_core::mcp::{McpServerConfig, McpState, McpTool};
+use taffy_core::{ChatRequest, ChatResponse, EmbedRequest, StreamEvent};
 
 const DB_FILE: &str = "taffy-studio.db";
 const MAX_BACKUPS: usize = 7;
@@ -139,8 +130,9 @@ fn secret_supported() -> bool {
     cfg!(not(any(target_os = "android", target_os = "ios")))
 }
 
-// SSE parsing, per-provider message building, and `build_request` now live in
-// `taffy_core::llm` (imported above). chat_stream + run_agentic call into them.
+// SSE parsing, per-provider message building, the plain `chat_stream`, and the
+// agentic tool-use loop (`agentic_stream`) all live in `taffy_core::llm` now;
+// the `chat_stream` command below just consumes whichever core stream applies.
 
 // ---------- Commands ----------
 
@@ -161,554 +153,58 @@ async fn chat_stream(
     req: ChatRequest,
     on_event: Channel<StreamEvent>,
     state: State<'_, Cancellation>,
-    mcp_state: State<'_, McpState>,
+    mcp_state: State<'_, Arc<McpState>>,
 ) -> Result<(), String> {
-    // Agentic path: tools attached + a provider that supports tool use →
-    // run the multi-round loop. Gemini tool-use isn't wired yet, so it falls
-    // through to a normal stream (tools ignored).
-    if let Some(tools) = req.tools.clone() {
-        if !tools.is_empty() {
-            let kind = provider_kind(&req.provider);
-            if kind == "openai" || kind == "anthropic" {
-                return run_agentic(&req, &tools, on_event, &state, &mcp_state).await;
-            }
-        }
-    }
-
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| e.to_string())?;
-
-    // Register cancellation token if caller gave us a stream_id.
+    // Register a cancellation token if the caller gave us a stream_id. The flag
+    // is polled between events below; flipping it (via `cancel_stream`) makes us
+    // stop consuming the core stream, which drops the in-flight HTTP request.
     let token = if let Some(id) = req.stream_id.as_deref() {
         Some((id.to_string(), register_token(&state, id).await))
     } else {
         None
     };
+    let flag = token.as_ref().map(|(_, t)| t.clone());
 
-    let kind = provider_kind(&req.provider).to_string();
+    // Agentic path: tools attached + a provider that supports tool use → drive
+    // the multi-round loop. Gemini tool-use isn't wired yet, so it falls through
+    // to a plain stream (tools ignored). Both branches are core `Stream`s; box
+    // them to a single type so the consume loop is written once.
+    let kind = provider_kind(&req.provider);
+    let use_tools = matches!(kind, "openai" | "anthropic")
+        && req.tools.as_ref().is_some_and(|t| !t.is_empty());
 
-    let request = match build_request(&client, &req, true) {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = on_event.send(StreamEvent::Error { message: e.clone() });
-            if let Some((id, _)) = &token {
-                unregister_token(&state, id).await;
-            }
-            return Err(e);
-        }
+    let mut stream: std::pin::Pin<
+        Box<dyn futures_util::Stream<Item = StreamEvent> + Send>,
+    > = if use_tools {
+        let tools = req.tools.clone().unwrap_or_default();
+        let mcp = mcp_state.inner().clone();
+        Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp))
+    } else {
+        Box::pin(taffy_core::llm::chat_stream(req))
     };
 
-    let response = match request.send().await {
-        Ok(r) => r,
-        Err(e) => {
-            let msg = e.to_string();
-            let _ = on_event.send(StreamEvent::Error {
-                message: msg.clone(),
-            });
-            if let Some((id, _)) = &token {
-                unregister_token(&state, id).await;
-            }
-            return Err(msg);
-        }
-    };
-
-    let status = response.status();
-    if !status.is_success() {
-        let text = response.text().await.unwrap_or_default();
-        let msg = format!("HTTP {}: {}", status, text);
-        let _ = on_event.send(StreamEvent::Error {
-            message: msg.clone(),
-        });
-        if let Some((id, _)) = &token {
-            unregister_token(&state, id).await;
-        }
-        return Err(msg);
-    }
-
-    let mut stream = response.bytes_stream();
-    let mut buffer = String::new();
-    let mut full = String::new();
-
-    while let Some(chunk) = stream.next().await {
-        // Cancellation check before doing anything with the new chunk.
-        if let Some((_, tok)) = &token {
-            if tok.load(Ordering::SeqCst) {
+    // Accumulate Token text so a mid-stream cancel can report what we had, the
+    // same as the old loop's `Cancelled { content: full }`.
+    let mut acc = String::new();
+    while let Some(ev) = stream.next().await {
+        if let Some(f) = &flag {
+            if f.load(Ordering::SeqCst) {
                 let _ = on_event.send(StreamEvent::Cancelled {
-                    content: std::mem::take(&mut full),
+                    content: std::mem::take(&mut acc),
                 });
-                if let Some((id, _)) = &token {
-                    unregister_token(&state, id).await;
-                }
-                return Ok(());
+                break;
             }
         }
-
-        let bytes = match chunk {
-            Ok(b) => b,
-            Err(e) => {
-                let msg = format!("stream error: {e}");
-                let _ = on_event.send(StreamEvent::Error {
-                    message: msg.clone(),
-                });
-                if let Some((id, _)) = &token {
-                    unregister_token(&state, id).await;
-                }
-                return Err(msg);
-            }
-        };
-        buffer.push_str(&String::from_utf8_lossy(&bytes));
-
-        while let Some(nl) = buffer.find('\n') {
-            let line: String = buffer.drain(..=nl).collect();
-            match parse_sse_line(&line) {
-                Sse::Other => continue,
-                Sse::Done => {
-                    let _ = on_event.send(StreamEvent::Done {
-                        content: std::mem::take(&mut full),
-                        model: req.model.clone(),
-                    });
-                    if let Some((id, _)) = &token {
-                        unregister_token(&state, id).await;
-                    }
-                    return Ok(());
-                }
-                Sse::Data(data) => {
-                    let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) else {
-                        continue;
-                    };
-                    if is_terminal(&kind, &json) {
-                        let _ = on_event.send(StreamEvent::Done {
-                            content: std::mem::take(&mut full),
-                            model: req.model.clone(),
-                        });
-                        if let Some((id, _)) = &token {
-                            unregister_token(&state, id).await;
-                        }
-                        return Ok(());
-                    }
-                    if let Some(c) = extract_delta(&kind, &json) {
-                        if !c.is_empty() {
-                            full.push_str(&c);
-                            // Also poll cancellation between fine-grained events.
-                            if let Some((_, tok)) = &token {
-                                if tok.load(Ordering::SeqCst) {
-                                    let _ = on_event.send(StreamEvent::Cancelled {
-                                        content: std::mem::take(&mut full),
-                                    });
-                                    if let Some((id, _)) = &token {
-                                        unregister_token(&state, id).await;
-                                    }
-                                    return Ok(());
-                                }
-                            }
-                            let _ = on_event.send(StreamEvent::Token { content: c });
-                        }
-                    }
-                }
-            }
-            // Fall through to consume the next \n-delimited line in buffer.
+        if let StreamEvent::Token { content } = &ev {
+            acc.push_str(content);
         }
+        let _ = on_event.send(ev);
     }
 
-    // Stream closed cleanly without an explicit terminator.
-    let _ = on_event.send(StreamEvent::Done {
-        content: full,
-        model: req.model.clone(),
-    });
     if let Some((id, _)) = &token {
         unregister_token(&state, id).await;
     }
     Ok(())
-}
-
-// ---------- Agentic tool-use loop ----------
-//
-// When a request carries `tools`, we run a non-streaming round loop instead of
-// the token stream: ask the model (with tools), execute any tool calls via the
-// MCP layer, feed the results back, and repeat until the model answers without
-// calling a tool (or we hit MAX_TOOL_ROUNDS). The final assistant text is
-// emitted as a single Token + Done so the existing UI path renders it. Tool
-// activity surfaces as ToolCall / ToolResult events.
-
-const TOOL_RESULT_UI_CAP: usize = 4000;
-
-fn truncate_for_ui(s: &str) -> String {
-    if s.len() <= TOOL_RESULT_UI_CAP {
-        return s.to_string();
-    }
-    let mut end = TOOL_RESULT_UI_CAP;
-    while !s.is_char_boundary(end) {
-        end -= 1;
-    }
-    format!("{}… [{} bytes total]", &s[..end], s.len())
-}
-
-fn tool_server_for<'a>(tools: &'a [ToolSpec], name: &str) -> Option<&'a ToolSpec> {
-    tools.iter().find(|t| t.name == name)
-}
-
-async fn exec_tool(
-    tools: &[ToolSpec],
-    mcp_state: &McpState,
-    name: &str,
-    args: serde_json::Value,
-) -> String {
-    match tool_server_for(tools, name) {
-        Some(t) => mcp::call_tool(mcp_state, &t.server_id, name, args)
-            .await
-            .unwrap_or_else(|e| format!("ERROR: {e}")),
-        None => format!("ERROR: tool '{name}' is not connected"),
-    }
-}
-
-async fn run_agentic(
-    req: &ChatRequest,
-    tools: &[ToolSpec],
-    on_event: Channel<StreamEvent>,
-    cancel: &State<'_, Cancellation>,
-    mcp_state: &McpState,
-) -> Result<(), String> {
-    let token = if let Some(id) = req.stream_id.as_deref() {
-        Some((id.to_string(), register_token(cancel, id).await))
-    } else {
-        None
-    };
-    let flag = token.as_ref().map(|(_, t)| t.clone());
-
-    let result = agentic_inner(req, tools, &on_event, mcp_state, flag).await;
-
-    if let Some((id, _)) = &token {
-        unregister_token(cancel, id).await;
-    }
-    result
-}
-
-async fn agentic_inner(
-    req: &ChatRequest,
-    tools: &[ToolSpec],
-    on_event: &Channel<StreamEvent>,
-    mcp_state: &McpState,
-    cancel_flag: Option<Arc<AtomicBool>>,
-) -> Result<(), String> {
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| e.to_string())?;
-    let kind = provider_kind(&req.provider).to_string();
-    let base = req
-        .base_url
-        .clone()
-        .unwrap_or_else(|| default_base_url(&kind).to_string());
-    let base = base.trim_end_matches('/').to_string();
-    let key = req.api_key.as_deref().unwrap_or("");
-
-    let cancelled = || -> bool {
-        cancel_flag
-            .as_ref()
-            .map(|f| f.load(Ordering::SeqCst))
-            .unwrap_or(false)
-    };
-
-    let mut full = String::new();
-
-    if kind == "anthropic" {
-        let (sys, rest) = split_system(&req.messages);
-        let mut messages: Vec<serde_json::Value> =
-            rest.iter().map(|m| anthropic_message(m)).collect();
-        let tools_json: Vec<serde_json::Value> = tools
-            .iter()
-            .map(|t| {
-                serde_json::json!({
-                    "name": t.name,
-                    "description": t.description,
-                    "input_schema": t.input_schema,
-                })
-            })
-            .collect();
-
-        for _ in 0..MAX_TOOL_ROUNDS {
-            if cancelled() {
-                let _ = on_event.send(StreamEvent::Cancelled {
-                    content: std::mem::take(&mut full),
-                });
-                return Ok(());
-            }
-
-            let mut body = serde_json::json!({
-                "model": req.model,
-                "messages": messages,
-                "max_tokens": req.max_tokens.unwrap_or(4096),
-                "tools": tools_json,
-                "stream": false,
-            });
-            if !sys.is_empty() {
-                body["system"] = serde_json::Value::String(sys.clone());
-            }
-            if let Some(t) = req.temperature {
-                body["temperature"] = serde_json::json!(t);
-            }
-
-            let mut h = reqwest::header::HeaderMap::new();
-            h.insert(
-                "x-api-key",
-                key.parse()
-                    .map_err(|e: reqwest::header::InvalidHeaderValue| e.to_string())?,
-            );
-            h.insert("anthropic-version", "2023-06-01".parse().unwrap());
-            h.insert("content-type", "application/json".parse().unwrap());
-
-            let resp = client
-                .post(format!("{base}/v1/messages"))
-                .headers(h)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| e.to_string());
-            let json = match read_json_or_emit(resp, on_event).await {
-                Ok(j) => j,
-                Err(e) => return Err(e),
-            };
-
-            let blocks = json
-                .get("content")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-            let stop = json
-                .get("stop_reason")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
-
-            let mut tool_uses: Vec<serde_json::Value> = Vec::new();
-            for b in &blocks {
-                match b.get("type").and_then(|v| v.as_str()) {
-                    Some("text") => {
-                        if let Some(t) = b.get("text").and_then(|v| v.as_str()) {
-                            if !t.is_empty() {
-                                full.push_str(t);
-                                let _ = on_event.send(StreamEvent::Token { content: t.into() });
-                            }
-                        }
-                    }
-                    Some("tool_use") => tool_uses.push(b.clone()),
-                    _ => {}
-                }
-            }
-
-            if stop != "tool_use" || tool_uses.is_empty() {
-                let _ = on_event.send(StreamEvent::Done {
-                    content: std::mem::take(&mut full),
-                    model: req.model.clone(),
-                });
-                return Ok(());
-            }
-
-            messages.push(serde_json::json!({ "role": "assistant", "content": blocks }));
-            let mut results: Vec<serde_json::Value> = Vec::new();
-            for tu in &tool_uses {
-                let id = tu
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let name = tu
-                    .get("name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let input = tu.get("input").cloned().unwrap_or(serde_json::json!({}));
-                let _ = on_event.send(StreamEvent::ToolCall {
-                    id: id.clone(),
-                    server_id: tool_server_for(tools, &name)
-                        .map(|t| t.server_id.clone())
-                        .unwrap_or_default(),
-                    name: name.clone(),
-                    args: input.to_string(),
-                });
-                let out = exec_tool(tools, mcp_state, &name, input).await;
-                let _ = on_event.send(StreamEvent::ToolResult {
-                    id: id.clone(),
-                    name: name.clone(),
-                    result: truncate_for_ui(&out),
-                });
-                results.push(serde_json::json!({
-                    "type": "tool_result",
-                    "tool_use_id": id,
-                    "content": out,
-                }));
-            }
-            messages.push(serde_json::json!({ "role": "user", "content": results }));
-        }
-    } else {
-        // OpenAI-compatible.
-        let mut messages: Vec<serde_json::Value> =
-            req.messages.iter().map(openai_message).collect();
-        let tools_json: Vec<serde_json::Value> = tools
-            .iter()
-            .map(|t| {
-                serde_json::json!({
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.input_schema,
-                    },
-                })
-            })
-            .collect();
-
-        for _ in 0..MAX_TOOL_ROUNDS {
-            if cancelled() {
-                let _ = on_event.send(StreamEvent::Cancelled {
-                    content: std::mem::take(&mut full),
-                });
-                return Ok(());
-            }
-
-            let mut body = serde_json::json!({
-                "model": req.model,
-                "messages": messages,
-                "tools": tools_json,
-                "stream": false,
-            });
-            if let Some(t) = req.temperature {
-                body["temperature"] = serde_json::json!(t);
-            }
-            if let Some(mt) = req.max_tokens {
-                body["max_tokens"] = serde_json::json!(mt);
-            }
-
-            let mut h = reqwest::header::HeaderMap::new();
-            if !key.is_empty() {
-                h.insert(
-                    "authorization",
-                    format!("Bearer {key}")
-                        .parse()
-                        .map_err(|e: reqwest::header::InvalidHeaderValue| e.to_string())?,
-                );
-            }
-            h.insert("content-type", "application/json".parse().unwrap());
-
-            let resp = client
-                .post(format!("{base}/chat/completions"))
-                .headers(h)
-                .json(&body)
-                .send()
-                .await
-                .map_err(|e| e.to_string());
-            let json = match read_json_or_emit(resp, on_event).await {
-                Ok(j) => j,
-                Err(e) => return Err(e),
-            };
-
-            let msg = json
-                .pointer("/choices/0/message")
-                .cloned()
-                .unwrap_or(serde_json::json!({}));
-            let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
-            if !content.is_empty() {
-                full.push_str(content);
-                let _ = on_event.send(StreamEvent::Token {
-                    content: content.into(),
-                });
-            }
-
-            let tool_calls = msg
-                .get("tool_calls")
-                .and_then(|v| v.as_array())
-                .cloned()
-                .unwrap_or_default();
-
-            if tool_calls.is_empty() {
-                let _ = on_event.send(StreamEvent::Done {
-                    content: std::mem::take(&mut full),
-                    model: req.model.clone(),
-                });
-                return Ok(());
-            }
-
-            messages.push(msg.clone());
-            for tc in &tool_calls {
-                let id = tc
-                    .get("id")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let name = tc
-                    .pointer("/function/name")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("")
-                    .to_string();
-                let args_str = tc
-                    .pointer("/function/arguments")
-                    .and_then(|v| v.as_str())
-                    .unwrap_or("{}")
-                    .to_string();
-                let _ = on_event.send(StreamEvent::ToolCall {
-                    id: id.clone(),
-                    server_id: tool_server_for(tools, &name)
-                        .map(|t| t.server_id.clone())
-                        .unwrap_or_default(),
-                    name: name.clone(),
-                    args: args_str.clone(),
-                });
-                let args_val: serde_json::Value =
-                    serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
-                let out = exec_tool(tools, mcp_state, &name, args_val).await;
-                let _ = on_event.send(StreamEvent::ToolResult {
-                    id: id.clone(),
-                    name: name.clone(),
-                    result: truncate_for_ui(&out),
-                });
-                messages.push(serde_json::json!({
-                    "role": "tool",
-                    "tool_call_id": id,
-                    "content": out,
-                }));
-            }
-        }
-    }
-
-    // Ran out of rounds — emit whatever we have so the user isn't left hanging.
-    let _ = on_event.send(StreamEvent::Done {
-        content: std::mem::take(&mut full),
-        model: req.model.clone(),
-    });
-    Ok(())
-}
-
-/// Shared helper: turn a reqwest send-result into parsed JSON, emitting an
-/// Error stream event (and returning Err) on transport / HTTP / parse failure.
-async fn read_json_or_emit(
-    resp: Result<reqwest::Response, String>,
-    on_event: &Channel<StreamEvent>,
-) -> Result<serde_json::Value, String> {
-    let resp = match resp {
-        Ok(r) => r,
-        Err(e) => {
-            let _ = on_event.send(StreamEvent::Error { message: e.clone() });
-            return Err(e);
-        }
-    };
-    let status = resp.status();
-    if !status.is_success() {
-        let text = resp.text().await.unwrap_or_default();
-        let msg = format!("HTTP {status}: {text}");
-        let _ = on_event.send(StreamEvent::Error {
-            message: msg.clone(),
-        });
-        return Err(msg);
-    }
-    match resp.json::<serde_json::Value>().await {
-        Ok(j) => Ok(j),
-        Err(e) => {
-            let msg = e.to_string();
-            let _ = on_event.send(StreamEvent::Error {
-                message: msg.clone(),
-            });
-            Err(msg)
-        }
-    }
 }
 
 // ---------- MCP commands ----------
@@ -716,20 +212,20 @@ async fn read_json_or_emit(
 #[tauri::command]
 async fn mcp_connect(
     config: McpServerConfig,
-    state: State<'_, McpState>,
+    state: State<'_, Arc<McpState>>,
 ) -> Result<Vec<McpTool>, String> {
-    mcp::connect(&state, config).await
+    taffy_core::mcp::connect(&state, config).await
 }
 
 #[tauri::command]
-async fn mcp_disconnect(id: String, state: State<'_, McpState>) -> Result<(), String> {
-    mcp::disconnect(&state, &id).await;
+async fn mcp_disconnect(id: String, state: State<'_, Arc<McpState>>) -> Result<(), String> {
+    taffy_core::mcp::disconnect(&state, &id).await;
     Ok(())
 }
 
 #[tauri::command]
-async fn mcp_list_tools(state: State<'_, McpState>) -> Result<Vec<McpTool>, String> {
-    Ok(mcp::all_tools(&state).await)
+async fn mcp_list_tools(state: State<'_, Arc<McpState>>) -> Result<Vec<McpTool>, String> {
+    Ok(taffy_core::mcp::all_tools(&state).await)
 }
 
 #[tauri::command]
@@ -737,9 +233,9 @@ async fn mcp_call_tool(
     server_id: String,
     name: String,
     args: serde_json::Value,
-    state: State<'_, McpState>,
+    state: State<'_, Arc<McpState>>,
 ) -> Result<String, String> {
-    mcp::call_tool(&state, &server_id, &name, args).await
+    taffy_core::mcp::call_tool(&state, &server_id, &name, args).await
 }
 
 // ---------- Embeddings (RAG) ----------
@@ -1200,7 +696,7 @@ pub fn run() {
 
     builder
         .manage(Cancellation::default())
-        .manage(McpState::default())
+        .manage(Arc::new(McpState::default()))
         .setup(|app| {
             // Backup BEFORE migrations run. If a future migration corrupts the
             // schema, the user can revert by copying the latest backup over

@@ -5,7 +5,7 @@
 mod static_files;
 
 use axum::{
-    extract::{Path, Request, State},
+    extract::{Extension, Path, Request, State},
     http::{HeaderMap, StatusCode},
     middleware::{self, Next},
     response::{
@@ -19,10 +19,14 @@ use clap::Parser;
 use futures_util::{Stream, StreamExt};
 use serde::Deserialize;
 use std::sync::Arc;
-use taffy_core::{ChatRequest, ChatResponse, Conversation, EmbedRequest, Message};
+use taffy_core::mcp::{McpServerConfig, McpState, McpTool};
+use taffy_core::{ChatRequest, ChatResponse, Conversation, EmbedRequest, Message, StreamEvent};
 use tower_http::cors::CorsLayer;
 
 type Shared = Arc<taffy_core::Db>;
+/// Shared MCP registry, threaded to handlers via `Extension` (the `State` slot
+/// is taken by the DB). One registry per server process, like the desktop shell.
+type Mcp = Arc<McpState>;
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "taffy-web", about = "Taffy Studio — self-hosted web server")]
@@ -135,10 +139,23 @@ async fn chat_complete_handler(
 }
 
 async fn chat_stream_handler(
+    Extension(mcp): Extension<Mcp>,
     Json(mut req): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
     req.api_key = key_for(&req.provider, &req.api_key);
-    let stream = taffy_core::llm::chat_stream(req).map(|ev| Event::default().json_data(&ev));
+    // Agentic path when tools are attached on a tool-capable provider; otherwise
+    // a plain token stream. Both are core `Stream`s — box to one type. The
+    // browser cancels by aborting the fetch, which drops this stream server-side.
+    let kind = taffy_core::llm::provider_kind(&req.provider);
+    let use_tools = matches!(kind, "openai" | "anthropic")
+        && req.tools.as_ref().is_some_and(|t| !t.is_empty());
+    let events: std::pin::Pin<Box<dyn Stream<Item = StreamEvent> + Send>> = if use_tools {
+        let tools = req.tools.clone().unwrap_or_default();
+        Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp))
+    } else {
+        Box::pin(taffy_core::llm::chat_stream(req))
+    };
+    let stream = events.map(|ev| Event::default().json_data(&ev));
     Sse::new(stream).keep_alive(KeepAlive::default())
 }
 
@@ -147,6 +164,55 @@ async fn embed_handler(
 ) -> Result<Json<Vec<Vec<f32>>>, (StatusCode, String)> {
     req.api_key = key_for(&req.provider, &req.api_key);
     taffy_core::llm::embed_texts(&req).await.map(Json).map_err(ise)
+}
+
+// ---------- MCP ----------
+//
+// The server hosts the MCP stdio connections (a browser can't spawn processes).
+// NOTE: the spawned commands must exist in the server's environment — in a
+// container the base image needs node/npx etc. for the usual `npx ...` servers.
+
+#[derive(Deserialize)]
+struct McpDisconnectBody {
+    id: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct McpCallBody {
+    server_id: String,
+    name: String,
+    #[serde(default)]
+    args: serde_json::Value,
+}
+
+async fn mcp_connect_h(
+    Extension(mcp): Extension<Mcp>,
+    Json(cfg): Json<McpServerConfig>,
+) -> Result<Json<Vec<McpTool>>, (StatusCode, String)> {
+    taffy_core::mcp::connect(&mcp, cfg).await.map(Json).map_err(ise)
+}
+
+async fn mcp_disconnect_h(
+    Extension(mcp): Extension<Mcp>,
+    Json(b): Json<McpDisconnectBody>,
+) -> Result<(), (StatusCode, String)> {
+    taffy_core::mcp::disconnect(&mcp, &b.id).await;
+    Ok(())
+}
+
+async fn mcp_tools_h(Extension(mcp): Extension<Mcp>) -> Json<Vec<McpTool>> {
+    Json(taffy_core::mcp::all_tools(&mcp).await)
+}
+
+async fn mcp_call_h(
+    Extension(mcp): Extension<Mcp>,
+    Json(b): Json<McpCallBody>,
+) -> Result<Json<String>, (StatusCode, String)> {
+    taffy_core::mcp::call_tool(&mcp, &b.server_id, &b.name, b.args)
+        .await
+        .map(Json)
+        .map_err(ise)
 }
 
 // ---------- conversations ----------
@@ -337,6 +403,8 @@ async fn main() {
         .clone()
         .unwrap_or_else(taffy_core::default_db_path);
     let db: Shared = Arc::new(taffy_core::Db::open(&db_path).expect("failed to open database"));
+    // One MCP registry for the process, shared with handlers via Extension.
+    let mcp: Mcp = Arc::new(McpState::default());
 
     let api = Router::new()
         .route("/api/health", get(health_handler))
@@ -344,6 +412,10 @@ async fn main() {
         .route("/api/chat/complete", post(chat_complete_handler))
         .route("/api/chat/stream", post(chat_stream_handler))
         .route("/api/embed", post(embed_handler))
+        .route("/api/mcp/connect", post(mcp_connect_h))
+        .route("/api/mcp/disconnect", post(mcp_disconnect_h))
+        .route("/api/mcp/tools", get(mcp_tools_h))
+        .route("/api/mcp/call", post(mcp_call_h))
         .route("/api/conversations", get(conv_list_h).post(conv_create_h))
         .route("/api/conversations/{id}", delete(conv_delete_h))
         .route("/api/conversations/{id}/model", post(conv_model_h))
@@ -370,6 +442,7 @@ async fn main() {
         .merge(api)
         .merge(static_routes)
         .layer(CorsLayer::permissive())
+        .layer(axum::Extension(mcp))
         .layer(axum::Extension(AppToken(config.token.clone())));
 
     let addr = format!("{}:{}", config.host, config.port);

@@ -6,9 +6,11 @@
 
 pub mod db;
 pub mod llm;
+pub mod mcp;
 
 // Convenience re-exports so shells can `use taffy_core::ChatRequest` etc.
 pub use db::{default_db_path, Conversation, ConversationInit, Db, Message};
 pub use llm::{
     Attachment, ChatMessage, ChatRequest, ChatResponse, EmbedRequest, StreamEvent, ToolSpec,
 };
+pub use mcp::{McpServerConfig, McpState, McpTool};

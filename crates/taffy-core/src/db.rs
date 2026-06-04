@@ -154,6 +154,10 @@ fn column_exists(conn: &Connection, table: &str, col: &str) -> bool {
     false
 }
 
+/// `(schema_version, schema-probe)` pair: if the probe sees its columns/tables,
+/// the DB is at least at that version. Used by `detect_baseline`.
+type BaselineCheck = (i64, fn(&Connection) -> bool);
+
 /// Infer how far a pre-existing database was migrated by probing its schema.
 /// Needed because the old desktop chain (tauri-plugin-sql) tracked progress in
 /// its own table, not `PRAGMA user_version` — so an existing v8 DB shows
@@ -163,7 +167,7 @@ fn detect_baseline(conn: &Connection) -> i64 {
         return 0;
     }
     let mut v = 1;
-    let checks: &[(i64, fn(&Connection) -> bool)] = &[
+    let checks: &[BaselineCheck] = &[
         (2, |c| column_exists(c, "messages", "attachments")),
         (3, |c| column_exists(c, "conversations", "provider_id")),
         (4, |c| column_exists(c, "conversations", "temperature")),

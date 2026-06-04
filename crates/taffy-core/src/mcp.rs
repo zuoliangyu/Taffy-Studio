@@ -11,7 +11,8 @@
 // request and call them by name without re-listing.
 //
 // This is the Phase-1 + Phase-2 substrate: `connect` / `list` / `call` here,
-// and the agentic tool-use loop in lib.rs drives them.
+// and the agentic tool-use loop in `llm::agentic_stream` drives them. Both
+// shells (Tauri desktop, axum web) manage one `McpState` and share this code.
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
