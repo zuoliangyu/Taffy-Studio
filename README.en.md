@@ -24,6 +24,14 @@ Glassmorphism UI · OpenAI / Anthropic / Gemini native protocols · streaming ·
 > and the Rust business logic now lives in a shared, platform-agnostic `taffy-core` crate so a
 > second shell (a self-hosted web server) can reuse it.
 
+## 🧭 Architecture & positioning
+
+- **Frontend**: React (one UI, reused by every shell)
+- **Core**: platform-agnostic Rust crate `taffy-core` (LLM dispatch / embeddings / DTOs; no `tauri::`, no `axum::`)
+- **Shells**: Tauri desktop & mobile (ready); web / server (axum + embedded frontend, planned)
+- **Access pattern**: desktop / mobile are native apps; (planned) browser opens a self-hosted service at `http://localhost:xxxx`
+- **Targets**: Windows, macOS, Linux desktop; iOS / Android mobile; and headless Linux servers (Docker)
+
 ### 📚 Companion docs
 
 - [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md) — DB migration rules for contributors

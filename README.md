@@ -24,6 +24,14 @@
 > Rust 业务逻辑现已抽到一个**平台无关的 `taffy-core` crate**，以便后续第二个外壳
 > （自托管 Web 服务）复用同一套核心。
 
+## 🧭 架构与定位
+
+- **前端**：React（一套 UI，所有外壳复用）
+- **核心**：平台无关的 Rust crate `taffy-core`（LLM 分发 / 嵌入 / DTO；不含 `tauri::`、`axum::`）
+- **外壳**：Tauri 桌面 & 移动（已就绪）；Web / 服务端（axum + 内嵌前端，规划中）
+- **访问方式**：桌面 / 移动为原生应用；（规划）浏览器访问自托管服务 `http://localhost:xxxx`
+- **适用场景**：Windows、macOS、Linux 桌面，iOS / Android 移动端，以及无桌面的 Linux 服务器（Docker）
+
 ### 📚 配套文档
 
 - [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md) —— 数据库迁移规则（贡献者须读）
