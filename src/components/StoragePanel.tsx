@@ -7,6 +7,7 @@
 // API key dialog is the natural place to also expose storage controls.
 import { useCallback, useEffect, useState } from 'react'
 import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog'
+import { useI18n } from '../i18n'
 import { formatBytes } from '../lib/attachments'
 import {
   exportConversationsToJson,
@@ -72,6 +73,7 @@ function pickJsonFile(): Promise<string | null> {
 }
 
 export function StoragePanel() {
+  const { t } = useI18n()
   const [info, setInfo] = useState<StorageInfo | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
@@ -204,33 +206,29 @@ export function StoragePanel() {
 
   return (
     <section className="storage-section">
-      <h3>Storage</h3>
+      <h3>{t('storage.title')}</h3>
 
       {!IS_TAURI ? (
         <>
-          <p className="muted-small">
-            Conversations are stored on the server. Export downloads a JSON
-            backup; Import merges one back in (new IDs minted, nothing
-            overwritten).
-          </p>
+          <p className="muted-small">{t('storage.webNote')}</p>
           <div className="storage-actions">
             <button
               type="button"
               className="ghost small"
               onClick={onExport}
               disabled={busy !== null}
-              title="Download every conversation + message as a single JSON file"
+              title={t('storage.exportHintWeb')}
             >
-              {busy === 'export' ? 'Exporting…' : 'Export JSON…'}
+              {busy === 'export' ? t('storage.exporting') : t('storage.export')}
             </button>
             <button
               type="button"
               className="ghost small"
               onClick={onImport}
               disabled={busy !== null}
-              title="Merge conversations from an export JSON (new IDs minted; nothing overwritten)"
+              title={t('storage.importHint')}
             >
-              {busy === 'import' ? 'Importing…' : 'Import JSON…'}
+              {busy === 'import' ? t('storage.importing') : t('storage.import')}
             </button>
             <button
               type="button"
@@ -238,37 +236,38 @@ export function StoragePanel() {
               onClick={() => setConfirmingReset(true)}
               disabled={busy !== null}
             >
-              Reset…
+              {t('storage.reset')}
             </button>
           </div>
           {lastImport && (
             <div className="storage-notice">
-              Imported {lastImport.conversations} conversation
-              {lastImport.conversations === 1 ? '' : 's'} ·{' '}
-              {lastImport.messages} message{lastImport.messages === 1 ? '' : 's'}.
-              <span className="muted-small"> Reloading…</span>
+              {t('storage.imported', {
+                c: lastImport.conversations,
+                m: lastImport.messages,
+              })}
+              <span className="muted-small"> {t('storage.reloading')}</span>
             </div>
           )}
         </>
       ) : info ? (
         <>
           <dl className="kv">
-            <dt>Database</dt>
+            <dt>{t('storage.database')}</dt>
             <dd>
               <code className="path" title={info.dbPath}>
                 {info.dbPath}
               </code>
               <span className="muted-small">
-                {info.dbSize > 0 ? formatBytes(info.dbSize) : 'not created yet'}
+                {info.dbSize > 0 ? formatBytes(info.dbSize) : t('storage.notCreated')}
               </span>
             </dd>
-            <dt>Auto-backups</dt>
+            <dt>{t('storage.autoBackups')}</dt>
             <dd>
               <code className="path" title={info.backupsDir}>
                 {info.backupsDir}
               </code>
               <span className="muted-small">
-                {info.backups.length} kept (newest 7)
+                {t('storage.kept', { n: info.backups.length })}
               </span>
             </dd>
           </dl>
@@ -280,7 +279,7 @@ export function StoragePanel() {
               ))}
               {info.backups.length > 5 && (
                 <li className="muted-small">
-                  …and {info.backups.length - 5} older
+                  {t('storage.older', { n: info.backups.length - 5 })}
                 </li>
               )}
             </ul>
@@ -293,34 +292,34 @@ export function StoragePanel() {
               onClick={onBackupNow}
               disabled={busy !== null}
             >
-              {busy === 'backup' ? '…' : 'Back up now'}
+              {busy === 'backup' ? '…' : t('storage.backupNow')}
             </button>
             <button
               type="button"
               className="ghost small"
               onClick={onOpenFolder}
               disabled={busy !== null}
-              title="Reveal in file manager (desktop only)"
+              title={t('storage.openFolderHint')}
             >
-              {busy === 'open' ? '…' : 'Open folder'}
+              {busy === 'open' ? '…' : t('storage.openFolder')}
             </button>
             <button
               type="button"
               className="ghost small"
               onClick={onExport}
               disabled={busy !== null}
-              title="Save every conversation + message to a single JSON file"
+              title={t('storage.exportHint')}
             >
-              {busy === 'export' ? 'Exporting…' : 'Export JSON…'}
+              {busy === 'export' ? t('storage.exporting') : t('storage.export')}
             </button>
             <button
               type="button"
               className="ghost small"
               onClick={onImport}
               disabled={busy !== null}
-              title="Merge conversations from an export JSON (new IDs minted; nothing overwritten)"
+              title={t('storage.importHint')}
             >
-              {busy === 'import' ? 'Importing…' : 'Import JSON…'}
+              {busy === 'import' ? t('storage.importing') : t('storage.import')}
             </button>
             <button
               type="button"
@@ -328,21 +327,22 @@ export function StoragePanel() {
               onClick={() => setConfirmingReset(true)}
               disabled={busy !== null}
             >
-              Reset…
+              {t('storage.reset')}
             </button>
           </div>
 
           {lastImport && (
             <div className="storage-notice">
-              Imported {lastImport.conversations} conversation
-              {lastImport.conversations === 1 ? '' : 's'} ·{' '}
-              {lastImport.messages} message{lastImport.messages === 1 ? '' : 's'}.
-              <span className="muted-small"> Reloading…</span>
+              {t('storage.imported', {
+                c: lastImport.conversations,
+                m: lastImport.messages,
+              })}
+              <span className="muted-small"> {t('storage.reloading')}</span>
             </div>
           )}
         </>
       ) : (
-        <p className="muted-small">Loading…</p>
+        <p className="muted-small">{t('common.loading')}</p>
       )}
 
       {error && (
@@ -353,20 +353,16 @@ export function StoragePanel() {
         <div className="reset-confirm">
           {IS_TAURI ? (
             <p>
-              This deletes all conversations and messages. A snapshot is saved to
-              <code className="path"> backups/</code> first; you can restore by
-              copying it over{' '}
-              <code>{info?.dbPath?.split(/[\\/]/).pop() ?? 'taffy-studio.db'}</code>.
+              {t('storage.resetConfirmDesktop', {
+                file: info?.dbPath?.split(/[\\/]/).pop() ?? 'taffy-studio.db',
+              })}
             </p>
           ) : (
-            <p>
-              This permanently deletes all conversations and messages on the
-              server. Export a JSON backup first if you might want them back.
-            </p>
+            <p>{t('storage.resetConfirmWeb')}</p>
           )}
           <div className="storage-actions">
             <button type="button" className="ghost small" onClick={() => setConfirmingReset(false)}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button
               type="button"
@@ -374,7 +370,7 @@ export function StoragePanel() {
               onClick={onReset}
               disabled={busy !== null}
             >
-              {busy === 'reset' ? 'Resetting…' : 'Yes, reset'}
+              {busy === 'reset' ? t('storage.resetting') : t('storage.resetYes')}
             </button>
           </div>
         </div>

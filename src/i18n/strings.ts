@@ -100,6 +100,37 @@ export const en = {
   'settings.defaultTag': 'default',
   'settings.templates': 'Assistant templates',
   'settings.storage': 'Storage & backups',
+
+  // --- storage & backup panel ---
+  'storage.title': 'Storage',
+  'storage.webNote':
+    'Conversations are stored on the server. Export downloads a JSON backup; Import merges one back in (new IDs minted, nothing overwritten).',
+  'storage.database': 'Database',
+  'storage.notCreated': 'not created yet',
+  'storage.autoBackups': 'Auto-backups',
+  'storage.kept': '{n} kept (newest 7)',
+  'storage.older': '…and {n} older',
+  'storage.backupNow': 'Back up now',
+  'storage.openFolder': 'Open folder',
+  'storage.openFolderHint': 'Reveal in file manager (desktop only)',
+  'storage.export': 'Export JSON…',
+  'storage.exporting': 'Exporting…',
+  'storage.exportHint': 'Save every conversation + message to a single JSON file',
+  'storage.exportHintWeb': 'Download every conversation + message as a single JSON file',
+  'storage.import': 'Import JSON…',
+  'storage.importing': 'Importing…',
+  'storage.importHint':
+    'Merge conversations from an export JSON (new IDs minted; nothing overwritten)',
+  'storage.reset': 'Reset…',
+  'storage.imported': 'Imported {c} conversations · {m} messages.',
+  'storage.reloading': 'Reloading…',
+  'storage.resetConfirmDesktop':
+    'This deletes all conversations and messages. A snapshot is saved to backups/ first; you can restore by copying it over {file}.',
+  'storage.resetConfirmWeb':
+    'This permanently deletes all conversations and messages on the server. Export a JSON backup first if you might want them back.',
+  'storage.resetYes': 'Yes, reset',
+  'storage.resetting': 'Resetting…',
+
   'settings.mcp': 'MCP servers',
   'settings.knowledge': 'Knowledge bases',
   'settings.appearance': 'Appearance',
@@ -259,6 +290,36 @@ export const zh: Record<TKey, string> = {
   'settings.defaultTag': '默认',
   'settings.templates': '助手模板',
   'settings.storage': '存储与备份',
+
+  // --- storage & backup panel ---
+  'storage.title': '存储',
+  'storage.webNote':
+    '会话存储在服务器上。导出会下载一份 JSON 备份；导入会把它合并回来（生成新 ID，不覆盖现有数据）。',
+  'storage.database': '数据库',
+  'storage.notCreated': '尚未创建',
+  'storage.autoBackups': '自动备份',
+  'storage.kept': '已保留 {n} 个（最新 7 个）',
+  'storage.older': '……另有 {n} 个更早的',
+  'storage.backupNow': '立即备份',
+  'storage.openFolder': '打开文件夹',
+  'storage.openFolderHint': '在文件管理器中显示（仅桌面端）',
+  'storage.export': '导出 JSON…',
+  'storage.exporting': '导出中…',
+  'storage.exportHint': '把所有会话和消息保存为一个 JSON 文件',
+  'storage.exportHintWeb': '把所有会话和消息下载为一个 JSON 文件',
+  'storage.import': '导入 JSON…',
+  'storage.importing': '导入中…',
+  'storage.importHint': '从导出的 JSON 合并会话（生成新 ID，不覆盖现有数据）',
+  'storage.reset': '重置…',
+  'storage.imported': '已导入 {c} 个会话 · {m} 条消息。',
+  'storage.reloading': '正在重新加载…',
+  'storage.resetConfirmDesktop':
+    '这会删除所有会话和消息。会先在 backups/ 中保存一份快照；你可以把它复制覆盖到 {file} 来恢复。',
+  'storage.resetConfirmWeb':
+    '这会永久删除服务器上的所有会话和消息。如果以后可能还需要，请先导出一份 JSON 备份。',
+  'storage.resetYes': '确认重置',
+  'storage.resetting': '重置中…',
+
   'settings.mcp': 'MCP 服务器',
   'settings.knowledge': '知识库',
   'settings.appearance': '外观',
