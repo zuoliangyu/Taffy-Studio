@@ -5,8 +5,9 @@
 //! (Tauri invoke / HTTP) instead of shipping raw SQL, which is what lets the
 //! same UI run on desktop and in a browser.
 //!
-//! Scope so far (milestone M3b-1): migrations + KV + conversations + messages.
-//! Full-text search, RAG (knowledge bases), and export/import follow.
+//! Scope so far: migrations + KV + conversations + messages + RAG (knowledge
+//! bases: storage + cosine search). Full-text search and export/import still
+//! ride the generic-SQL escape hatch pending their own semantic endpoints.
 
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -258,6 +259,49 @@ pub struct Message {
     pub created_at: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub attachments: Option<serde_json::Value>,
+}
+
+// ---------- RAG DTOs (local knowledge bases) ----------
+//
+// snake_case field names match the frontend's `KnowledgeBase` / `DocSummary` /
+// `RetrievedChunk` interfaces on the wire (same convention as `Conversation`).
+
+/// A knowledge base row. `dim` is the embedding dimensionality, captured on the
+/// first chunk inserted.
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct KnowledgeBase {
+    pub id: String,
+    pub name: String,
+    pub provider_id: Option<String>,
+    pub embed_model: Option<String>,
+    pub dim: Option<i64>,
+    pub created_at: i64,
+}
+
+/// One document's footprint in a KB (grouped chunks), for the document list.
+#[derive(Serialize, Debug)]
+pub struct DocSummary {
+    pub doc_id: String,
+    pub source: String,
+    pub chunks: i64,
+}
+
+/// A retrieval hit: chunk text + its source + cosine score against the query.
+#[derive(Serialize, Debug)]
+pub struct RetrievedChunk {
+    pub text: String,
+    pub source: String,
+    pub score: f64,
+}
+
+/// One chunk to index: its text plus the embedding the frontend computed (the
+/// embedding call stays frontend-side so provider/key resolution lives in one
+/// place; storage + search are server-side so both shells share them).
+#[derive(Deserialize, Debug)]
+pub struct ChunkInput {
+    pub text: String,
+    #[serde(default)]
+    pub embedding: Vec<f64>,
 }
 
 // ---------- Db handle ----------
@@ -553,6 +597,231 @@ impl Db {
             .map_err(e2s)
     }
 
+    // ----- RAG: knowledge bases + chunks -----
+
+    pub fn list_knowledge_bases(&self) -> Result<Vec<KnowledgeBase>, String> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, name, provider_id, embed_model, dim, created_at \
+                 FROM knowledge_bases ORDER BY created_at DESC",
+            )
+            .map_err(e2s)?;
+        let rows = stmt
+            .query_map([], row_to_kb)
+            .map_err(e2s)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(e2s)?;
+        Ok(rows)
+    }
+
+    pub fn create_knowledge_base(
+        &self,
+        name: &str,
+        provider_id: Option<&str>,
+        embed_model: Option<&str>,
+    ) -> Result<KnowledgeBase, String> {
+        let row = KnowledgeBase {
+            id: new_id(),
+            name: name.to_string(),
+            provider_id: provider_id.map(|s| s.to_string()),
+            embed_model: embed_model.map(|s| s.to_string()),
+            dim: None,
+            created_at: now_ms(),
+        };
+        self.lock()
+            .execute(
+                "INSERT INTO knowledge_bases (id, name, provider_id, embed_model, dim, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                params![
+                    row.id,
+                    row.name,
+                    row.provider_id,
+                    row.embed_model,
+                    row.dim,
+                    row.created_at,
+                ],
+            )
+            .map_err(e2s)?;
+        Ok(row)
+    }
+
+    /// Patch a KB. Only the keys present in `patch` are changed — mirrors the
+    /// frontend's `Partial<...>` semantics: an absent key keeps the current
+    /// value, a present `null` clears it (provider_id / embed_model only).
+    pub fn update_knowledge_base(
+        &self,
+        id: &str,
+        patch: &serde_json::Value,
+    ) -> Result<(), String> {
+        let obj = match patch.as_object() {
+            Some(o) => o,
+            None => return Ok(()),
+        };
+        let conn = self.lock();
+        let mut cur = conn
+            .query_row(
+                "SELECT id, name, provider_id, embed_model, dim, created_at \
+                 FROM knowledge_bases WHERE id = ?1",
+                params![id],
+                row_to_kb,
+            )
+            .optional()
+            .map_err(e2s)?;
+        let Some(kb) = cur.take() else {
+            return Ok(()); // unknown id — no-op, like the frontend's early return
+        };
+        // `null` JSON → None; a string → Some(string); absent key → keep current.
+        let opt_str = |v: &serde_json::Value| v.as_str().map(|s| s.to_string());
+        let name = match obj.get("name").and_then(|v| v.as_str()) {
+            Some(s) => s.to_string(),
+            None => kb.name,
+        };
+        let provider_id = match obj.get("provider_id") {
+            Some(v) => opt_str(v),
+            None => kb.provider_id,
+        };
+        let embed_model = match obj.get("embed_model") {
+            Some(v) => opt_str(v),
+            None => kb.embed_model,
+        };
+        conn.execute(
+            "UPDATE knowledge_bases SET name = ?1, provider_id = ?2, embed_model = ?3 WHERE id = ?4",
+            params![name, provider_id, embed_model, id],
+        )
+        .map_err(e2s)?;
+        Ok(())
+    }
+
+    pub fn delete_knowledge_base(&self, id: &str) -> Result<(), String> {
+        let conn = self.lock();
+        conn.execute("DELETE FROM knowledge_chunks WHERE kb_id = ?1", params![id])
+            .map_err(e2s)?;
+        conn.execute("DELETE FROM knowledge_bases WHERE id = ?1", params![id])
+            .map_err(e2s)?;
+        Ok(())
+    }
+
+    pub fn list_documents(&self, kb_id: &str) -> Result<Vec<DocSummary>, String> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT doc_id, source, COUNT(*) AS chunks FROM knowledge_chunks \
+                 WHERE kb_id = ?1 GROUP BY doc_id, source ORDER BY MAX(created_at) DESC",
+            )
+            .map_err(e2s)?;
+        let rows = stmt
+            .query_map(params![kb_id], |r| {
+                Ok(DocSummary {
+                    doc_id: r.get(0)?,
+                    source: r.get(1)?,
+                    chunks: r.get(2)?,
+                })
+            })
+            .map_err(e2s)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(e2s)?;
+        Ok(rows)
+    }
+
+    pub fn count_chunks(&self, kb_id: &str) -> Result<i64, String> {
+        self.lock()
+            .query_row(
+                "SELECT COUNT(*) FROM knowledge_chunks WHERE kb_id = ?1",
+                params![kb_id],
+                |r| r.get(0),
+            )
+            .map_err(e2s)
+    }
+
+    pub fn delete_document(&self, doc_id: &str) -> Result<(), String> {
+        self.lock()
+            .execute("DELETE FROM knowledge_chunks WHERE doc_id = ?1", params![doc_id])
+            .map(|_| ())
+            .map_err(e2s)
+    }
+
+    /// Insert a batch of pre-embedded chunks under one document. Captures the
+    /// KB's embedding dimensionality from the first non-empty vector if unset.
+    /// Returns the number of chunks inserted.
+    pub fn add_chunks(
+        &self,
+        kb_id: &str,
+        doc_id: &str,
+        source: &str,
+        items: &[ChunkInput],
+    ) -> Result<usize, String> {
+        if items.is_empty() {
+            return Ok(0);
+        }
+        let now = now_ms();
+        let conn = self.lock();
+        let mut dim: Option<i64> = conn
+            .query_row(
+                "SELECT dim FROM knowledge_bases WHERE id = ?1",
+                params![kb_id],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(e2s)?
+            .flatten();
+        let dim_was_set = dim.is_some();
+        for item in items {
+            if dim.is_none() && !item.embedding.is_empty() {
+                dim = Some(item.embedding.len() as i64);
+            }
+            let embedding_json = serde_json::to_string(&item.embedding).map_err(e2s)?;
+            conn.execute(
+                "INSERT INTO knowledge_chunks (id, kb_id, doc_id, source, text, embedding, created_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![new_id(), kb_id, doc_id, source, item.text, embedding_json, now],
+            )
+            .map_err(e2s)?;
+        }
+        if !dim_was_set {
+            if let Some(d) = dim {
+                conn.execute(
+                    "UPDATE knowledge_bases SET dim = ?1 WHERE id = ?2",
+                    params![d, kb_id],
+                )
+                .map_err(e2s)?;
+            }
+        }
+        Ok(items.len())
+    }
+
+    /// Score every chunk in the KB against `query` by cosine and return the
+    /// top-k positive hits. Brute force — fine at local-app scale, and avoids a
+    /// native vector-index extension.
+    pub fn search_knowledge(
+        &self,
+        kb_id: &str,
+        query: &[f64],
+        top_k: usize,
+    ) -> Result<Vec<RetrievedChunk>, String> {
+        if query.is_empty() {
+            return Ok(Vec::new());
+        }
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare("SELECT text, source, embedding FROM knowledge_chunks WHERE kb_id = ?1")
+            .map_err(e2s)?;
+        let mut rows = stmt.query(params![kb_id]).map_err(e2s)?;
+        let mut scored: Vec<RetrievedChunk> = Vec::new();
+        while let Some(row) = rows.next().map_err(e2s)? {
+            let text: String = row.get(0).map_err(e2s)?;
+            let source: String = row.get(1).map_err(e2s)?;
+            let embedding_raw: String = row.get(2).map_err(e2s)?;
+            let vec: Vec<f64> = serde_json::from_str(&embedding_raw).unwrap_or_default();
+            let score = cosine(query, &vec);
+            scored.push(RetrievedChunk { text, source, score });
+        }
+        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.retain(|s| s.score > 0.0);
+        scored.truncate(top_k);
+        Ok(scored)
+    }
+
     /// Wipe all user data (keeps the schema). Used by the "reset database"
     /// action — done in-connection rather than deleting the file so it works
     /// while the handle is open (Windows won't unlink an open SQLite file).
@@ -674,6 +943,35 @@ fn row_to_conversation(r: &rusqlite::Row<'_>) -> rusqlite::Result<Conversation> 
     })
 }
 
+fn row_to_kb(r: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgeBase> {
+    Ok(KnowledgeBase {
+        id: r.get(0)?,
+        name: r.get(1)?,
+        provider_id: r.get(2)?,
+        embed_model: r.get(3)?,
+        dim: r.get(4)?,
+        created_at: r.get(5)?,
+    })
+}
+
+/// Cosine similarity over the shared prefix of two vectors (matches the old JS
+/// implementation, which also clamped to `min(len)`).
+fn cosine(a: &[f64], b: &[f64]) -> f64 {
+    let n = a.len().min(b.len());
+    let mut dot = 0.0;
+    let mut na = 0.0;
+    let mut nb = 0.0;
+    for i in 0..n {
+        dot += a[i] * b[i];
+        na += a[i] * a[i];
+        nb += b[i] * b[i];
+    }
+    if na == 0.0 || nb == 0.0 {
+        return 0.0;
+    }
+    dot / (na.sqrt() * nb.sqrt())
+}
+
 fn row_to_message(r: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let attachments_raw: Option<String> = r.get(5)?;
     let attachments = attachments_raw
@@ -777,6 +1075,56 @@ mod tests {
             )
             .unwrap();
         assert_eq!(res.rows_affected, 1);
+    }
+
+    #[test]
+    fn rag_round_trip() {
+        let db = Db::open_in_memory().unwrap();
+        let kb = db
+            .create_knowledge_base("KB", Some("openai"), Some("text-embedding-3-small"))
+            .unwrap();
+        assert_eq!(db.list_knowledge_bases().unwrap().len(), 1);
+        assert_eq!(kb.dim, None);
+
+        // Index two chunks under one doc; dim captured from the first vector.
+        let items = vec![
+            ChunkInput { text: "alpha".into(), embedding: vec![1.0, 0.0] },
+            ChunkInput { text: "beta".into(), embedding: vec![0.0, 1.0] },
+        ];
+        let n = db.add_chunks(&kb.id, "doc1", "notes.md", &items).unwrap();
+        assert_eq!(n, 2);
+        assert_eq!(db.count_chunks(&kb.id).unwrap(), 2);
+        // dim is now set on the KB.
+        let kb2 = db.list_knowledge_bases().unwrap().into_iter().next().unwrap();
+        assert_eq!(kb2.dim, Some(2));
+
+        // Document listing groups by doc.
+        let docs = db.list_documents(&kb.id).unwrap();
+        assert_eq!(docs.len(), 1);
+        assert_eq!(docs[0].doc_id, "doc1");
+        assert_eq!(docs[0].chunks, 2);
+
+        // Search: query close to "alpha" ranks it first, positive score only.
+        let hits = db.search_knowledge(&kb.id, &[1.0, 0.0], 5).unwrap();
+        assert_eq!(hits.len(), 1); // beta is orthogonal → score 0, filtered out
+        assert_eq!(hits[0].text, "alpha");
+        assert!(hits[0].score > 0.99);
+
+        // Patch semantics: present key changes, absent key untouched.
+        db.update_knowledge_base(&kb.id, &serde_json::json!({ "name": "Renamed" }))
+            .unwrap();
+        db.update_knowledge_base(&kb.id, &serde_json::json!({ "embed_model": null }))
+            .unwrap();
+        let kb3 = db.list_knowledge_bases().unwrap().into_iter().next().unwrap();
+        assert_eq!(kb3.name, "Renamed");
+        assert_eq!(kb3.embed_model, None);
+        assert_eq!(kb3.provider_id.as_deref(), Some("openai")); // untouched
+
+        // Delete the document, then the KB (cascade chunks).
+        db.delete_document("doc1").unwrap();
+        assert_eq!(db.count_chunks(&kb.id).unwrap(), 0);
+        db.delete_knowledge_base(&kb.id).unwrap();
+        assert_eq!(db.list_knowledge_bases().unwrap().len(), 0);
     }
 
     #[test]

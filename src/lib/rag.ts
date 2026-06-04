@@ -1,12 +1,14 @@
 // Local RAG — knowledge bases + brute-force vector retrieval.
 //
-// Storage: SQLite (migration v8) holds `knowledge_bases` and `knowledge_chunks`
-// with embeddings as a JSON float array in TEXT. Embeddings are computed by the
-// backend (`embedTexts`, keeps the key out of the webview). Search loads a KB's
-// chunks and ranks them by cosine in JS — fine at local-app scale (thousands of
-// chunks), and it avoids a native sqlite-vec extension dependency.
+// Storage + cosine search live in the backend (taffy-core::db; migration v8 holds
+// `knowledge_bases` and `knowledge_chunks`), reached through the `api` layer so
+// the same code runs on desktop (Tauri commands) and web (HTTP routes). This
+// module keeps the parts that need frontend context: chunking (pure text) and
+// embedding (provider/key resolution lives in `settings`). Embeddings are
+// computed by the backend (`embedTexts`, keeps the key out of the webview) and
+// the vectors are shipped to the store/search endpoints.
 import { api } from '../services/api'
-import { getDb, uuid } from './db'
+import { uuid } from './db'
 import { getProvider, readApiKey, type AppSettings } from './settings'
 
 export interface KnowledgeBase {
@@ -19,6 +21,12 @@ export interface KnowledgeBase {
   dim: number | null
   created_at: number
 }
+
+/** The subset of a KB the editor can patch. Absent keys are left unchanged;
+ *  an explicit null clears provider_id / embed_model. */
+export type KnowledgeBasePatch = Partial<
+  Pick<KnowledgeBase, 'name' | 'provider_id' | 'embed_model'>
+>
 
 export interface KnowledgeChunk {
   id: string
@@ -33,6 +41,19 @@ export interface RetrievedChunk {
   text: string
   source: string
   score: number
+}
+
+export interface DocSummary {
+  doc_id: string
+  source: string
+  chunks: number
+}
+
+/** One chunk to index: text + its embedding (computed frontend-side). Mirrors
+ *  the Rust `ChunkInput`. */
+export interface ChunkInput {
+  text: string
+  embedding: number[]
 }
 
 // ---------- embeddings ----------
@@ -104,110 +125,45 @@ export function chunkText(text: string, target = 900, overlap = 150): string[] {
   return chunks.filter(Boolean)
 }
 
-// ---------- cosine ----------
-
-function cosine(a: number[], b: number[]): number {
-  let dot = 0
-  let na = 0
-  let nb = 0
-  const n = Math.min(a.length, b.length)
-  for (let i = 0; i < n; i++) {
-    dot += a[i]! * b[i]!
-    na += a[i]! * a[i]!
-    nb += b[i]! * b[i]!
-  }
-  if (na === 0 || nb === 0) return 0
-  return dot / (Math.sqrt(na) * Math.sqrt(nb))
-}
-
 // ---------- knowledge base CRUD ----------
 
-export async function listKnowledgeBases(): Promise<KnowledgeBase[]> {
-  const conn = await getDb()
-  return conn.select<KnowledgeBase[]>(
-    'SELECT id, name, provider_id, embed_model, dim, created_at FROM knowledge_bases ORDER BY created_at DESC',
-  )
+export function listKnowledgeBases(): Promise<KnowledgeBase[]> {
+  return api.ragListKbs()
 }
 
-export async function createKnowledgeBase(
+export function createKnowledgeBase(
   name: string,
   providerId: string | null,
   embedModel: string | null,
 ): Promise<KnowledgeBase> {
-  const conn = await getDb()
-  const row: KnowledgeBase = {
-    id: uuid(),
-    name,
-    provider_id: providerId,
-    embed_model: embedModel,
-    dim: null,
-    created_at: Date.now(),
-  }
-  await conn.execute(
-    'INSERT INTO knowledge_bases (id, name, provider_id, embed_model, dim, created_at) VALUES ($1,$2,$3,$4,$5,$6)',
-    [row.id, row.name, row.provider_id, row.embed_model, row.dim, row.created_at],
-  )
-  return row
+  return api.ragCreateKb(name, providerId, embedModel)
 }
 
-export async function updateKnowledgeBase(
+export function updateKnowledgeBase(
   id: string,
-  patch: Partial<Pick<KnowledgeBase, 'name' | 'provider_id' | 'embed_model'>>,
+  patch: KnowledgeBasePatch,
 ): Promise<void> {
-  const conn = await getDb()
-  const cur = await conn.select<KnowledgeBase[]>(
-    'SELECT id, name, provider_id, embed_model, dim, created_at FROM knowledge_bases WHERE id = $1',
-    [id],
-  )
-  const kb = cur[0]
-  if (!kb) return
-  await conn.execute(
-    'UPDATE knowledge_bases SET name=$1, provider_id=$2, embed_model=$3 WHERE id=$4',
-    [
-      patch.name ?? kb.name,
-      patch.provider_id !== undefined ? patch.provider_id : kb.provider_id,
-      patch.embed_model !== undefined ? patch.embed_model : kb.embed_model,
-      id,
-    ],
-  )
+  return api.ragUpdateKb(id, patch)
 }
 
-export async function deleteKnowledgeBase(id: string): Promise<void> {
-  const conn = await getDb()
-  await conn.execute('DELETE FROM knowledge_chunks WHERE kb_id = $1', [id])
-  await conn.execute('DELETE FROM knowledge_bases WHERE id = $1', [id])
+export function deleteKnowledgeBase(id: string): Promise<void> {
+  return api.ragDeleteKb(id)
 }
 
-export interface DocSummary {
-  doc_id: string
-  source: string
-  chunks: number
+export function listDocuments(kbId: string): Promise<DocSummary[]> {
+  return api.ragListDocs(kbId)
 }
 
-export async function listDocuments(kbId: string): Promise<DocSummary[]> {
-  const conn = await getDb()
-  return conn.select<DocSummary[]>(
-    'SELECT doc_id, source, COUNT(*) AS chunks FROM knowledge_chunks WHERE kb_id = $1 GROUP BY doc_id, source ORDER BY MAX(created_at) DESC',
-    [kbId],
-  )
+export function countChunks(kbId: string): Promise<number> {
+  return api.ragCountChunks(kbId)
 }
 
-export async function countChunks(kbId: string): Promise<number> {
-  const conn = await getDb()
-  const r = await conn.select<{ n: number }[]>(
-    'SELECT COUNT(*) AS n FROM knowledge_chunks WHERE kb_id = $1',
-    [kbId],
-  )
-  return r[0]?.n ?? 0
-}
-
-export async function deleteDocument(docId: string): Promise<void> {
-  const conn = await getDb()
-  await conn.execute('DELETE FROM knowledge_chunks WHERE doc_id = $1', [docId])
+export function deleteDocument(docId: string): Promise<void> {
+  return api.ragDeleteDoc(docId)
 }
 
 /** Chunk + embed + store a document into a KB. Returns the number of chunks
- *  indexed. Embeds in batches to keep payloads small. */
+ *  indexed. Embeds (and stores) in batches to keep payloads small. */
 export async function addDocument(
   settings: AppSettings,
   kb: KnowledgeBase,
@@ -216,56 +172,32 @@ export async function addDocument(
 ): Promise<number> {
   const chunks = chunkText(text)
   if (chunks.length === 0) return 0
-  const conn = await getDb()
   const docId = uuid()
-  const now = Date.now()
-  let dim = kb.dim ?? null
 
   const BATCH = 32
   for (let i = 0; i < chunks.length; i += BATCH) {
     const slice = chunks.slice(i, i + BATCH)
     const vectors = await embedFor(settings, kb, slice)
-    for (let j = 0; j < slice.length; j++) {
-      const vec = vectors[j] ?? []
-      if (dim == null && vec.length > 0) dim = vec.length
-      await conn.execute(
-        'INSERT INTO knowledge_chunks (id, kb_id, doc_id, source, text, embedding, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
-        [uuid(), kb.id, docId, source, slice[j], JSON.stringify(vec), now],
-      )
-    }
-  }
-  if (dim != null && kb.dim == null) {
-    await conn.execute('UPDATE knowledge_bases SET dim = $1 WHERE id = $2', [dim, kb.id])
+    const items: ChunkInput[] = slice.map((t, j) => ({
+      text: t,
+      embedding: vectors[j] ?? [],
+    }))
+    await api.ragAddChunks(kb.id, docId, source, items)
   }
   return chunks.length
 }
 
-/** Embed the query, score every chunk in the KB by cosine, return top-k. */
+/** Embed the query, then have the backend score every chunk in the KB by cosine
+ *  and return the top-k positive hits. */
 export async function searchKnowledge(
   settings: AppSettings,
   kb: KnowledgeBase,
   query: string,
   topK = 5,
 ): Promise<RetrievedChunk[]> {
-  const conn = await getDb()
-  const rows = await conn.select<{ text: string; source: string; embedding: string }[]>(
-    'SELECT text, source, embedding FROM knowledge_chunks WHERE kb_id = $1',
-    [kb.id],
-  )
-  if (rows.length === 0) return []
   const [qvec] = await embedFor(settings, kb, [query])
   if (!qvec || qvec.length === 0) return []
-  const scored = rows.map((r) => {
-    let vec: number[] = []
-    try {
-      vec = JSON.parse(r.embedding)
-    } catch {
-      vec = []
-    }
-    return { text: r.text, source: r.source, score: cosine(qvec, vec) }
-  })
-  scored.sort((a, b) => b.score - a.score)
-  return scored.slice(0, topK).filter((s) => s.score > 0)
+  return api.ragSearch(kb.id, qvec, topK)
 }
 
 /** Build the retrieval-augmented context block to prepend to a chat request. */

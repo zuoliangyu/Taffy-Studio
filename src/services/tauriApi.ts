@@ -18,6 +18,13 @@ import type {
   StreamHandle,
 } from '../lib/llm'
 import type { McpServerConfig, McpTool } from '../lib/mcp'
+import type {
+  ChunkInput,
+  DocSummary,
+  KnowledgeBase,
+  KnowledgeBasePatch,
+  RetrievedChunk,
+} from '../lib/rag'
 import type { BackupInfo, StorageInfo } from '../lib/storage'
 
 /** Embedding request shape (mirrors Rust `EmbedRequest`). */
@@ -124,6 +131,57 @@ export function mcpCallTool(
   args: unknown,
 ): Promise<string> {
   return invoke<string>('mcp_call_tool', { serverId, name, args })
+}
+
+// ---------- RAG (knowledge bases) ----------
+
+export function ragListKbs(): Promise<KnowledgeBase[]> {
+  return invoke<KnowledgeBase[]>('rag_list_kbs')
+}
+
+export function ragCreateKb(
+  name: string,
+  providerId: string | null,
+  embedModel: string | null,
+): Promise<KnowledgeBase> {
+  return invoke<KnowledgeBase>('rag_create_kb', { name, providerId, embedModel })
+}
+
+export function ragUpdateKb(id: string, patch: KnowledgeBasePatch): Promise<void> {
+  return invoke<void>('rag_update_kb', { id, patch })
+}
+
+export function ragDeleteKb(id: string): Promise<void> {
+  return invoke<void>('rag_delete_kb', { id })
+}
+
+export function ragListDocs(kbId: string): Promise<DocSummary[]> {
+  return invoke<DocSummary[]>('rag_list_docs', { kbId })
+}
+
+export function ragCountChunks(kbId: string): Promise<number> {
+  return invoke<number>('rag_count_chunks', { kbId })
+}
+
+export function ragDeleteDoc(docId: string): Promise<void> {
+  return invoke<void>('rag_delete_doc', { docId })
+}
+
+export function ragAddChunks(
+  kbId: string,
+  docId: string,
+  source: string,
+  items: ChunkInput[],
+): Promise<number> {
+  return invoke<number>('rag_add_chunks', { kbId, docId, source, items })
+}
+
+export function ragSearch(
+  kbId: string,
+  embedding: number[],
+  topK: number,
+): Promise<RetrievedChunk[]> {
+  return invoke<RetrievedChunk[]>('rag_search', { kbId, embedding, topK })
 }
 
 // ---------- storage / backups ----------

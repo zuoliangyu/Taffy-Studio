@@ -669,6 +669,79 @@ fn db_init() -> Result<(), String> {
     Ok(())
 }
 
+// ---------- RAG (knowledge bases) ----------
+//
+// Storage + cosine search live in taffy-core::db; embedding stays frontend-side
+// (provider/key resolution lives in JS settings) and reaches the chunks here.
+
+#[tauri::command]
+fn rag_list_kbs(db: State<'_, taffy_core::Db>) -> Result<Vec<taffy_core::KnowledgeBase>, String> {
+    db.list_knowledge_bases()
+}
+
+#[tauri::command]
+fn rag_create_kb(
+    db: State<'_, taffy_core::Db>,
+    name: String,
+    provider_id: Option<String>,
+    embed_model: Option<String>,
+) -> Result<taffy_core::KnowledgeBase, String> {
+    db.create_knowledge_base(&name, provider_id.as_deref(), embed_model.as_deref())
+}
+
+#[tauri::command]
+fn rag_update_kb(
+    db: State<'_, taffy_core::Db>,
+    id: String,
+    patch: serde_json::Value,
+) -> Result<(), String> {
+    db.update_knowledge_base(&id, &patch)
+}
+
+#[tauri::command]
+fn rag_delete_kb(db: State<'_, taffy_core::Db>, id: String) -> Result<(), String> {
+    db.delete_knowledge_base(&id)
+}
+
+#[tauri::command]
+fn rag_list_docs(
+    db: State<'_, taffy_core::Db>,
+    kb_id: String,
+) -> Result<Vec<taffy_core::DocSummary>, String> {
+    db.list_documents(&kb_id)
+}
+
+#[tauri::command]
+fn rag_count_chunks(db: State<'_, taffy_core::Db>, kb_id: String) -> Result<i64, String> {
+    db.count_chunks(&kb_id)
+}
+
+#[tauri::command]
+fn rag_delete_doc(db: State<'_, taffy_core::Db>, doc_id: String) -> Result<(), String> {
+    db.delete_document(&doc_id)
+}
+
+#[tauri::command]
+fn rag_add_chunks(
+    db: State<'_, taffy_core::Db>,
+    kb_id: String,
+    doc_id: String,
+    source: String,
+    items: Vec<taffy_core::ChunkInput>,
+) -> Result<usize, String> {
+    db.add_chunks(&kb_id, &doc_id, &source, &items)
+}
+
+#[tauri::command]
+fn rag_search(
+    db: State<'_, taffy_core::Db>,
+    kb_id: String,
+    embedding: Vec<f64>,
+    top_k: usize,
+) -> Result<Vec<taffy_core::RetrievedChunk>, String> {
+    db.search_knowledge(&kb_id, &embedding, top_k)
+}
+
 // ---------- Entry ----------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -752,6 +825,16 @@ pub fn run() {
             db_select,
             db_execute,
             db_init,
+            // RAG (taffy-core::db knowledge bases)
+            rag_list_kbs,
+            rag_create_kb,
+            rag_update_kb,
+            rag_delete_kb,
+            rag_list_docs,
+            rag_count_chunks,
+            rag_delete_doc,
+            rag_add_chunks,
+            rag_search,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

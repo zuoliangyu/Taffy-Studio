@@ -215,6 +215,113 @@ async fn mcp_call_h(
         .map_err(ise)
 }
 
+// ---------- RAG (knowledge bases) ----------
+//
+// Storage + cosine search are server-side (taffy-core::db); the frontend embeds
+// (via /api/embed) and ships the vectors here. Same ops the desktop exposes as
+// Tauri commands, so the UI is transport-agnostic.
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct CreateKb {
+    name: String,
+    #[serde(default)]
+    provider_id: Option<String>,
+    #[serde(default)]
+    embed_model: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AddChunks {
+    doc_id: String,
+    source: String,
+    items: Vec<taffy_core::ChunkInput>,
+}
+
+fn default_top_k() -> usize {
+    5
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SearchBody {
+    embedding: Vec<f64>,
+    #[serde(default = "default_top_k")]
+    top_k: usize,
+}
+
+async fn rag_list_kbs_h(
+    State(db): State<Shared>,
+) -> Result<Json<Vec<taffy_core::KnowledgeBase>>, (StatusCode, String)> {
+    db.list_knowledge_bases().map(Json).map_err(ise)
+}
+
+async fn rag_create_kb_h(
+    State(db): State<Shared>,
+    Json(b): Json<CreateKb>,
+) -> Result<Json<taffy_core::KnowledgeBase>, (StatusCode, String)> {
+    db.create_knowledge_base(&b.name, b.provider_id.as_deref(), b.embed_model.as_deref())
+        .map(Json)
+        .map_err(ise)
+}
+
+async fn rag_update_kb_h(
+    State(db): State<Shared>,
+    Path(id): Path<String>,
+    Json(patch): Json<serde_json::Value>,
+) -> Result<(), (StatusCode, String)> {
+    db.update_knowledge_base(&id, &patch).map_err(ise)
+}
+
+async fn rag_delete_kb_h(
+    State(db): State<Shared>,
+    Path(id): Path<String>,
+) -> Result<(), (StatusCode, String)> {
+    db.delete_knowledge_base(&id).map_err(ise)
+}
+
+async fn rag_list_docs_h(
+    State(db): State<Shared>,
+    Path(id): Path<String>,
+) -> Result<Json<Vec<taffy_core::DocSummary>>, (StatusCode, String)> {
+    db.list_documents(&id).map(Json).map_err(ise)
+}
+
+async fn rag_count_h(
+    State(db): State<Shared>,
+    Path(id): Path<String>,
+) -> Result<Json<i64>, (StatusCode, String)> {
+    db.count_chunks(&id).map(Json).map_err(ise)
+}
+
+async fn rag_add_chunks_h(
+    State(db): State<Shared>,
+    Path(id): Path<String>,
+    Json(b): Json<AddChunks>,
+) -> Result<Json<usize>, (StatusCode, String)> {
+    db.add_chunks(&id, &b.doc_id, &b.source, &b.items)
+        .map(Json)
+        .map_err(ise)
+}
+
+async fn rag_search_h(
+    State(db): State<Shared>,
+    Path(id): Path<String>,
+    Json(b): Json<SearchBody>,
+) -> Result<Json<Vec<taffy_core::RetrievedChunk>>, (StatusCode, String)> {
+    db.search_knowledge(&id, &b.embedding, b.top_k)
+        .map(Json)
+        .map_err(ise)
+}
+
+async fn rag_delete_doc_h(
+    State(db): State<Shared>,
+    Path(doc_id): Path<String>,
+) -> Result<(), (StatusCode, String)> {
+    db.delete_document(&doc_id).map_err(ise)
+}
+
 // ---------- conversations ----------
 
 #[derive(Deserialize)]
@@ -416,6 +523,13 @@ async fn main() {
         .route("/api/mcp/disconnect", post(mcp_disconnect_h))
         .route("/api/mcp/tools", get(mcp_tools_h))
         .route("/api/mcp/call", post(mcp_call_h))
+        .route("/api/rag/kbs", get(rag_list_kbs_h).post(rag_create_kb_h))
+        .route("/api/rag/kbs/{id}", post(rag_update_kb_h).delete(rag_delete_kb_h))
+        .route("/api/rag/kbs/{id}/documents", get(rag_list_docs_h))
+        .route("/api/rag/kbs/{id}/count", get(rag_count_h))
+        .route("/api/rag/kbs/{id}/chunks", post(rag_add_chunks_h))
+        .route("/api/rag/kbs/{id}/search", post(rag_search_h))
+        .route("/api/rag/documents/{docId}", delete(rag_delete_doc_h))
         .route("/api/conversations", get(conv_list_h).post(conv_create_h))
         .route("/api/conversations/{id}", delete(conv_delete_h))
         .route("/api/conversations/{id}/model", post(conv_model_h))

@@ -19,6 +19,13 @@ import type {
   MessageAttachment,
 } from '../lib/db'
 import type { McpServerConfig, McpTool } from '../lib/mcp'
+import type {
+  ChunkInput,
+  DocSummary,
+  KnowledgeBase,
+  KnowledgeBasePatch,
+  RetrievedChunk,
+} from '../lib/rag'
 import type { BackupInfo, StorageInfo } from '../lib/storage'
 import type { DbExecResult, EmbedRequest } from './tauriApi'
 
@@ -207,6 +214,59 @@ export function mcpCallTool(
   args: unknown,
 ): Promise<string> {
   return postJson<string>('/api/mcp/call', { serverId, name, args })
+}
+
+// ---------- RAG (knowledge bases) ----------
+
+const kbPath = (id: string) => `/api/rag/kbs/${encodeURIComponent(id)}`
+
+export function ragListKbs(): Promise<KnowledgeBase[]> {
+  return getJson<KnowledgeBase[]>('/api/rag/kbs')
+}
+
+export function ragCreateKb(
+  name: string,
+  providerId: string | null,
+  embedModel: string | null,
+): Promise<KnowledgeBase> {
+  return postJson<KnowledgeBase>('/api/rag/kbs', { name, providerId, embedModel })
+}
+
+export function ragUpdateKb(id: string, patch: KnowledgeBasePatch): Promise<void> {
+  return send(kbPath(id), 'POST', patch)
+}
+
+export function ragDeleteKb(id: string): Promise<void> {
+  return send(kbPath(id), 'DELETE')
+}
+
+export function ragListDocs(kbId: string): Promise<DocSummary[]> {
+  return getJson<DocSummary[]>(`${kbPath(kbId)}/documents`)
+}
+
+export function ragCountChunks(kbId: string): Promise<number> {
+  return getJson<number>(`${kbPath(kbId)}/count`)
+}
+
+export function ragDeleteDoc(docId: string): Promise<void> {
+  return send(`/api/rag/documents/${encodeURIComponent(docId)}`, 'DELETE')
+}
+
+export function ragAddChunks(
+  kbId: string,
+  docId: string,
+  source: string,
+  items: ChunkInput[],
+): Promise<number> {
+  return postJson<number>(`${kbPath(kbId)}/chunks`, { docId, source, items })
+}
+
+export function ragSearch(
+  kbId: string,
+  embedding: number[],
+  topK: number,
+): Promise<RetrievedChunk[]> {
+  return postJson<RetrievedChunk[]>(`${kbPath(kbId)}/search`, { embedding, topK })
 }
 
 // ---------- storage / backups ----------
