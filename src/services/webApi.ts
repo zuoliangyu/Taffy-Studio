@@ -17,7 +17,27 @@ import type { BackupInfo, StorageInfo } from '../lib/storage'
 import type { DbExecResult, EmbedRequest } from './tauriApi'
 
 function notImpl(name: string): never {
-  throw new Error(`[web] ${name} is not implemented yet (web shell pending — milestone M3)`)
+  throw new Error(`[web] ${name} is not implemented yet (data layer pending — milestone M3b)`)
+}
+
+// Single-user bearer token, if the server requires one. Stored in localStorage
+// (a proper login UI comes later). Sent on every request.
+function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = { 'content-type': 'application/json' }
+  const tok =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('taffy_token') : null
+  if (tok) h.authorization = `Bearer ${tok}`
+  return h
+}
+
+async function postJson<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text().catch(() => '')}`)
+  return r.json() as Promise<T>
 }
 
 // ---------- misc ----------
@@ -26,8 +46,10 @@ export function getPlatform(): Promise<string> {
   return Promise.resolve('web')
 }
 
-export function ping(_payload: string): Promise<string> {
-  return notImpl('ping')
+export async function ping(payload: string): Promise<string> {
+  const r = await fetch('/api/health', { headers: authHeaders() })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return `${(await r.text()).trim()}: ${payload}`
 }
 
 // ---------- filesystem ----------
@@ -62,28 +84,82 @@ export function secretDelete(_key: string): Promise<void> {
 
 // ---------- LLM ----------
 
-export function listModels(_req: ChatRequest): Promise<string[]> {
-  return notImpl('listModels')
+export function listModels(req: ChatRequest): Promise<string[]> {
+  return postJson<string[]>('/api/models', req)
 }
 
-export function chatComplete(_req: ChatRequest): Promise<ChatResponse> {
-  return notImpl('chatComplete')
+export function chatComplete(req: ChatRequest): Promise<ChatResponse> {
+  return postJson<ChatResponse>('/api/chat/complete', req)
 }
 
 export function chatStream(
-  _req: ChatRequest,
-  _onEvent: (e: StreamEvent) => void,
+  req: ChatRequest,
+  onEvent: (e: StreamEvent) => void,
 ): StreamHandle {
-  const err = new Error('[web] chatStream is not implemented yet (milestone M3)')
-  return { id: '', promise: Promise.reject(err), cancel: () => Promise.resolve() }
+  const id = req.streamId ?? crypto.randomUUID()
+  const ctrl = new AbortController()
+  const promise = (async () => {
+    let res: Response
+    try {
+      res = await fetch('/api/chat/stream', {
+        method: 'POST',
+        headers: authHeaders(),
+        body: JSON.stringify({ ...req, streamId: id }),
+        signal: ctrl.signal,
+      })
+    } catch (e) {
+      if (!ctrl.signal.aborted) onEvent({ type: 'error', message: String(e) })
+      return
+    }
+    if (!res.ok || !res.body) {
+      onEvent({ type: 'error', message: `HTTP ${res.status}` })
+      return
+    }
+    // Parse the SSE byte stream: frames are `data: <json>` lines.
+    const reader = res.body.getReader()
+    const decoder = new TextDecoder()
+    let buf = ''
+    try {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        let nl: number
+        while ((nl = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, nl).trimEnd()
+          buf = buf.slice(nl + 1)
+          if (!line.startsWith('data:')) continue
+          const data = line.slice(5).trim()
+          if (!data) continue
+          try {
+            onEvent(JSON.parse(data) as StreamEvent)
+          } catch {
+            /* skip malformed frame */
+          }
+        }
+      }
+    } catch (e) {
+      if (!ctrl.signal.aborted) onEvent({ type: 'error', message: String(e) })
+    }
+  })()
+  return {
+    id,
+    promise,
+    cancel: () => {
+      ctrl.abort()
+      return Promise.resolve()
+    },
+  }
 }
 
 export function cancelStream(_id: string): Promise<void> {
+  // The web stream is cancelled by aborting its fetch (see the handle above);
+  // there's no separate server endpoint to hit.
   return Promise.resolve()
 }
 
-export function embedTexts(_req: EmbedRequest): Promise<number[][]> {
-  return notImpl('embedTexts')
+export function embedTexts(req: EmbedRequest): Promise<number[][]> {
+  return postJson<number[][]>('/api/embed', req)
 }
 
 // ---------- MCP ----------

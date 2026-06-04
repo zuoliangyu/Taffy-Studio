@@ -1,0 +1,23 @@
+# taffy-web — self-hosted web/server shell. Serves the embedded React frontend
+# and exposes the same operations as the Tauri shell over HTTP (+ SSE for
+# streaming), all delegating to `taffy-core`. Build the frontend first
+# (`npm run build` / `vite build`) so `rust-embed` has a `dist/` to embed.
+[package]
+name = "taffy-web"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+
+[dependencies]
+taffy-core = { path = "../taffy-core" }
+axum = "0.8"
+tower-http = { version = "0.6", features = ["cors"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive", "env"] }
+rust-embed = { version = "8", features = ["compression"] }
+mime_guess = "2"
+futures-util = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["fmt"] }

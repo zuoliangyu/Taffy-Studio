@@ -59,7 +59,7 @@
 ```
 
 > 前端通过编译期变量 `__IS_TAURI__` 自动切换 API 层（Tauri `invoke` ↔ HTTP `fetch`/SSE），组件代码 100% 复用。
-> 现状：`taffy-core` 与前端 `api` 抽象层（`tauriApi.ts` 实现）已落地；`webApi.ts` 目前为占位、`taffy-web` 外壳规划中（见[路线图](#-路线图)）。
+> 现状：`taffy-core`、前端 `api` 抽象层、以及 `taffy-web`(axum) 的 LLM/embed 端点（含 SSE、单用户 env token）均已落地，`webApi.ts` 的 LLM 面已实现；会话/KV/密钥/MCP 等数据层语义端点进行中（见[路线图](#-路线图)）。
 
 ### 📚 配套文档
 
@@ -217,10 +217,14 @@ app/
 │     ├─ settings.ts                 # 类型化配置 + 密钥环迁移
 │     └─ llm.ts                      # ChatRequest / chatStream 契约
 ├─ crates/
-│  └─ taffy-core/                    # ★ 平台无关核心 —— 不含 tauri:: / axum::
+│  ├─ taffy-core/                    # ★ 平台无关核心 —— 不含 tauri:: / axum::
+│  │  └─ src/
+│  │     ├─ lib.rs                   # 重新导出
+│  │     └─ llm.rs                   # 服务商分发、SSE 解析、流式、list_models / chat_complete / embed_texts
+│  └─ taffy-web/                     # ★ Web/服务端外壳（axum + rust-embed）
 │     └─ src/
-│        ├─ lib.rs                   # 重新导出
-│        └─ llm.rs                   # 服务商分发、SSE、list_models / chat_complete / embed_texts
+│        ├─ main.rs                  # 路由 + 单用户 env token + SSE + SPA 托管
+│        └─ static_files.rs          # 内嵌 dist/
 ├─ src-tauri/                        # Tauri 桌面/移动外壳（薄；委托给 taffy-core）
 │  ├─ src/
 │  │  ├─ main.rs                     # 桌面入口
@@ -266,8 +270,9 @@ app/
 - [x] **MCP 客户端** —— stdio 服务器、工具注册表、agentic 工具调用循环（OpenAI + Anthropic）
 - [x] **知识库 / RAG** —— 本地向量库（暴力余弦）、按会话注入检索
 - [x] **共享 Rust 核心** —— 把平台无关逻辑（LLM / 嵌入 / DTO）拆出到 `crates/taffy-core`
-- [x] **前端后端抽象层** —— `services/api.ts` + `tauriApi.ts`（`webApi.ts` 占位），UI 与传输彻底解耦
-- [ ] **自托管 Web 服务**（Docker）—— 在共享核心之上做第二个外壳（axum + 内嵌前端 + `webApi.ts` 实现），浏览器访问
+- [x] **前端后端抽象层** —— `services/api.ts` + `tauriApi.ts` + `webApi.ts`，UI 与传输彻底解耦
+- [x] **Web 外壳骨架** —— `taffy-web`(axum + rust-embed) + 单用户 env token + LLM/embed 端点(SSE)，`webApi.ts` 对应实现已落地
+- [ ] **自托管 Web 服务完整化**（Docker）—— 数据层（会话/消息/KV）语义端点下沉到核心 + 密钥/MCP，浏览器端到端可用
 - [ ] 流式 Markdown 稳定性（表格/代码半渲染时不闪烁）
 - [ ] agentic 工具调用循环内的逐 token 流式（目前是按轮）
 - [ ] 移动端密钥存储用 Stronghold / Android Keystore / iOS Keychain

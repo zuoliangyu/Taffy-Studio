@@ -10,6 +10,7 @@
 //! lift the streaming primitive into this crate as a `Stream` so the web shell
 //! can reuse it too.
 
+use futures_util::{Stream, StreamExt};
 use serde::{Deserialize, Serialize};
 
 // ---------- DTOs (JS <-> Rust) ----------
@@ -544,6 +545,88 @@ pub async fn chat_complete(req: &ChatRequest) -> Result<ChatResponse, String> {
         .unwrap_or(&req.model)
         .to_string();
     Ok(ChatResponse { content, model })
+}
+
+/// Transport-agnostic streaming completion. Yields `StreamEvent`s as the
+/// provider streams tokens; ends with `Done` (or `Error`). This is the plain
+/// (non-agentic) path — the Tauri shell still owns the tool-use loop and
+/// cancellation registry on top of the same parsing helpers. The axum web
+/// shell maps this straight onto SSE.
+pub fn chat_stream(req: ChatRequest) -> impl Stream<Item = StreamEvent> {
+    async_stream::stream! {
+        let client = match reqwest::Client::builder().build() {
+            Ok(c) => c,
+            Err(e) => {
+                yield StreamEvent::Error { message: e.to_string() };
+                return;
+            }
+        };
+        let kind = provider_kind(&req.provider).to_string();
+        let request = match build_request(&client, &req, true) {
+            Ok(r) => r,
+            Err(e) => {
+                yield StreamEvent::Error { message: e };
+                return;
+            }
+        };
+        let response = match request.send().await {
+            Ok(r) => r,
+            Err(e) => {
+                yield StreamEvent::Error { message: e.to_string() };
+                return;
+            }
+        };
+        let status = response.status();
+        if !status.is_success() {
+            let text = response.text().await.unwrap_or_default();
+            yield StreamEvent::Error { message: format!("HTTP {}: {}", status, text) };
+            return;
+        }
+
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+        let mut full = String::new();
+
+        while let Some(chunk) = stream.next().await {
+            let bytes = match chunk {
+                Ok(b) => b,
+                Err(e) => {
+                    yield StreamEvent::Error { message: format!("stream error: {e}") };
+                    return;
+                }
+            };
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+
+            while let Some(nl) = buffer.find('\n') {
+                let line: String = buffer.drain(..=nl).collect();
+                match parse_sse_line(&line) {
+                    Sse::Other => continue,
+                    Sse::Done => {
+                        yield StreamEvent::Done { content: std::mem::take(&mut full), model: req.model.clone() };
+                        return;
+                    }
+                    Sse::Data(data) => {
+                        let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) else {
+                            continue;
+                        };
+                        if is_terminal(&kind, &json) {
+                            yield StreamEvent::Done { content: std::mem::take(&mut full), model: req.model.clone() };
+                            return;
+                        }
+                        if let Some(c) = extract_delta(&kind, &json) {
+                            if !c.is_empty() {
+                                full.push_str(&c);
+                                yield StreamEvent::Token { content: c };
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Stream closed without an explicit terminator.
+        yield StreamEvent::Done { content: full, model: req.model.clone() };
+    }
 }
 
 pub async fn embed_texts(req: &EmbedRequest) -> Result<Vec<Vec<f32>>, String> {

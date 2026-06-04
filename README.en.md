@@ -61,9 +61,10 @@ Glassmorphism UI · OpenAI / Anthropic / Gemini native protocols · streaming ·
 
 > The frontend switches API layers via the compile-time flag `__IS_TAURI__`
 > (Tauri `invoke` ↔ HTTP `fetch`/SSE), so component code is 100% reused.
-> Today: `taffy-core` and the frontend `api` abstraction (`tauriApi.ts` impl)
-> are in place; `webApi.ts` is a stub and the `taffy-web` shell is planned
-> (see the [Roadmap](#-roadmap)).
+> Today: `taffy-core`, the frontend `api` abstraction, and the `taffy-web`
+> (axum) LLM/embed endpoints (SSE + single-user env token) are in place, with
+> the LLM surface of `webApi.ts` implemented. Conversation/KV/secret/MCP
+> semantic endpoints are in progress (see the [Roadmap](#-roadmap)).
 
 ### 📚 Companion docs
 
@@ -221,10 +222,14 @@ app/
 │     ├─ settings.ts                 # Typed config + keyring migration
 │     └─ llm.ts                      # ChatRequest / chatStream contract
 ├─ crates/
-│  └─ taffy-core/                    # ★ platform-agnostic core — no tauri:: / axum::
+│  ├─ taffy-core/                    # ★ platform-agnostic core — no tauri:: / axum::
+│  │  └─ src/
+│  │     ├─ lib.rs                   # re-exports
+│  │     └─ llm.rs                   # provider dispatch, SSE parsing, streaming, list_models / chat_complete / embed_texts
+│  └─ taffy-web/                     # ★ web/server shell (axum + rust-embed)
 │     └─ src/
-│        ├─ lib.rs                   # re-exports
-│        └─ llm.rs                   # provider dispatch, SSE, list_models / chat_complete / embed_texts
+│        ├─ main.rs                  # routes + single-user env token + SSE + SPA serving
+│        └─ static_files.rs          # embeds dist/
 ├─ src-tauri/                        # Tauri desktop/mobile shell (thin; delegates to taffy-core)
 │  ├─ src/
 │  │  ├─ main.rs                     # Desktop entry
@@ -270,8 +275,9 @@ Tracked in [`MIGRATION.md`](./MIGRATION.md). High level:
 - [x] **MCP client** — stdio servers, tool registry, agentic tool-use loop (OpenAI + Anthropic)
 - [x] **Knowledge base / RAG** — local vector store (brute-force cosine), per-conversation retrieval injection
 - [x] **Shared Rust core** — platform-agnostic `crates/taffy-core` (LLM / embeddings / DTOs) split out of the Tauri shell
-- [x] **Frontend backend abstraction** — `services/api.ts` + `tauriApi.ts` (`webApi.ts` stub); UI fully decoupled from transport
-- [ ] **Self-hosted web server** (Docker) — a second shell (axum + embedded frontend + `webApi.ts` impl) over the shared core, browser-accessed
+- [x] **Frontend backend abstraction** — `services/api.ts` + `tauriApi.ts` + `webApi.ts`; UI fully decoupled from transport
+- [x] **Web shell skeleton** — `taffy-web` (axum + rust-embed) + single-user env token + LLM/embed endpoints (SSE), with the matching `webApi.ts` impl
+- [ ] **Full self-hosted web server** (Docker) — data layer (conversations/messages/KV) lowered into the core + secret/MCP; browser end-to-end
 - [ ] Streaming markdown stability (no flicker on half-rendered tables/code)
 - [ ] Token-by-token streaming during the agentic tool-use loop (currently per-round)
 - [ ] Stronghold / Android Keystore / iOS Keychain for mobile secret storage
