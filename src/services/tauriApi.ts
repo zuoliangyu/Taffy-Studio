@@ -29,6 +29,7 @@ import type {
   KnowledgeBasePatch,
   RetrievedChunk,
 } from '../lib/rag'
+import type { SkillMeta } from '../lib/skills'
 import type { BackupInfo, StorageInfo } from '../lib/storage'
 
 /** Embedding request shape (mirrors Rust `EmbedRequest`). */
@@ -186,6 +187,28 @@ export function ragSearch(
   topK: number,
 ): Promise<RetrievedChunk[]> {
   return invoke<RetrievedChunk[]>('rag_search', { kbId, embedding, topK })
+}
+
+// ---------- skills ----------
+
+export function skillList(): Promise<SkillMeta[]> {
+  return invoke<SkillMeta[]>('skill_list')
+}
+
+export function skillImportMarkdown(content: string): Promise<SkillMeta> {
+  return invoke<SkillMeta>('skill_import_markdown', { content })
+}
+
+export function skillImportZip(bytes: ArrayBuffer): Promise<SkillMeta> {
+  return invoke<SkillMeta>('skill_import_zip', { bytes: Array.from(new Uint8Array(bytes)) })
+}
+
+export function skillDelete(name: string): Promise<void> {
+  return invoke<void>('skill_delete', { name })
+}
+
+export function skillRead(name: string): Promise<string> {
+  return invoke<string>('skill_read', { name })
 }
 
 // ---------- full-text search + JSON export/import ----------

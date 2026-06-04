@@ -63,6 +63,8 @@ export const en = {
   'chat.kb': 'Knowledge',
   'chat.kbNone': 'No knowledge base',
   'chat.kbRetrieving': 'Searching knowledge…',
+  'chat.skills': 'Skills',
+  'chat.skillsNone': 'No skills enabled',
 
   // --- temperature / overrides chips ---
   'temp.title': 'Temperature for this conversation',
@@ -144,6 +146,14 @@ export const en = {
   'storage.resetting': 'Resetting…',
 
   'settings.mcp': 'MCP servers',
+  'settings.skills': 'Skills',
+
+  // --- skills panel ---
+  'skill.desc':
+    'Skills are SKILL.md instruction packages. The model loads one on demand via the use_skill tool, then follows it using your tools. Skills are not executed.',
+  'skill.empty': 'No skills yet.',
+  'skill.import': 'Import (.md / .zip)…',
+  'skill.importing': 'Importing…',
   'settings.knowledge': 'Knowledge bases',
   'settings.appearance': 'Appearance',
   'settings.language': 'Language',
@@ -267,6 +277,8 @@ export const zh: Record<TKey, string> = {
   'chat.kb': '知识库',
   'chat.kbNone': '未选择知识库',
   'chat.kbRetrieving': '正在检索知识库…',
+  'chat.skills': '技能',
+  'chat.skillsNone': '未启用技能',
 
   'temp.title': '此会话的温度',
   'temp.overriding': '覆盖默认值',
@@ -345,6 +357,14 @@ export const zh: Record<TKey, string> = {
   'storage.resetting': '重置中…',
 
   'settings.mcp': 'MCP 服务器',
+  'settings.skills': '技能',
+
+  // --- skills panel ---
+  'skill.desc':
+    '技能是 SKILL.md 指令包。模型通过 use_skill 工具按需加载，然后用你的工具照着执行。技能本身不执行代码。',
+  'skill.empty': '还没有技能。',
+  'skill.import': '导入（.md / .zip）…',
+  'skill.importing': '导入中…',
   'settings.knowledge': '知识库',
   'settings.appearance': '外观',
   'settings.language': '语言',

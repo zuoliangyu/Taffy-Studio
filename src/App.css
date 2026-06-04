@@ -2962,11 +2962,48 @@ button.icon-only {
    16. MCP panel (Settings)
    ============================================================ */
 
-.mcp-panel, .kb-panel {
+.mcp-panel, .kb-panel, .skills-panel {
   display: flex;
   flex-direction: column;
   gap: 10px;
   padding-top: 8px;
+}
+
+/* Skills manager (Settings → Skills) */
+.skill-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.skill-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: 10px;
+  background: hsl(var(--muted) / 0.3);
+}
+.skill-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  flex: 1;
+}
+.skill-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+.skill-desc {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+.skills-foot {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 2px;
 }
 .mcp-desc { margin-bottom: 2px; }
 .mcp-list {

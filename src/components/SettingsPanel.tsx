@@ -22,6 +22,7 @@ import {
 } from '../lib/capabilities'
 import { listModels } from '../lib/llm'
 import { McpPanel } from './McpPanel'
+import { SkillsPanel } from './SkillsPanel'
 import { KnowledgePanel } from './KnowledgePanel'
 import {
   defaultSettings,
@@ -47,6 +48,7 @@ type SettingsSection =
   | 'providers'
   | 'appearance'
   | 'mcp'
+  | 'skills'
   | 'knowledge'
   | 'templates'
   | 'storage'
@@ -73,6 +75,7 @@ const SECTIONS: { key: SettingsSection; labelKey: TKey }[] = [
   { key: 'providers', labelKey: 'settings.navProviders' },
   { key: 'appearance', labelKey: 'settings.appearance' },
   { key: 'mcp', labelKey: 'settings.mcp' },
+  { key: 'skills', labelKey: 'settings.skills' },
   { key: 'knowledge', labelKey: 'settings.knowledge' },
   { key: 'templates', labelKey: 'settings.templates' },
   { key: 'storage', labelKey: 'settings.storage' },
@@ -110,6 +113,12 @@ function SectionIcon({ name }: { name: SettingsSection }) {
       return (
         <svg {...common}>
           <path d="M14 4h6v6M10 20H4v-6M20 4l-8 8M4 20l5-5" />
+        </svg>
+      )
+    case 'skills':
+      return (
+        <svg {...common}>
+          <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
         </svg>
       )
     case 'knowledge':
@@ -678,6 +687,7 @@ export function SettingsPanel({ open, onClose }: Props) {
             )}
 
             {section === 'mcp' && <McpPanel />}
+            {section === 'skills' && <SkillsPanel />}
             {section === 'knowledge' && <KnowledgePanel settings={s} />}
             {section === 'templates' && (
               <TemplatesEditor

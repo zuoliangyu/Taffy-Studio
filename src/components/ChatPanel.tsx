@@ -17,6 +17,7 @@ import { attachmentTextBlock } from '../lib/doctext'
 import { ocrImage } from '../lib/ocr'
 import { getConvoPrefs, setConvoPrefs } from '../lib/convoPrefs'
 import { mcpListTools, toolsToSpecs, type McpTool } from '../lib/mcp'
+import { listSkills, type SkillMeta } from '../lib/skills'
 import {
   buildContextBlock,
   listKnowledgeBases,
@@ -80,11 +81,13 @@ export function ChatPanel({
   const [messages, setMessages] = useState<DbMessage[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
-  // --- tools + knowledge (per-conversation) ---
+  // --- tools + knowledge + skills (per-conversation) ---
   const [toolsEnabled, setToolsEnabled] = useState(false)
   const [kbId, setKbId] = useState<string | null>(null)
   const [connectedTools, setConnectedTools] = useState<McpTool[]>([])
   const [kbs, setKbs] = useState<KnowledgeBase[]>([])
+  const [allSkills, setAllSkills] = useState<SkillMeta[]>([])
+  const [enabledSkills, setEnabledSkills] = useState<string[]>([])
   // Tool activity for the in-flight stream, rendered as chips above the draft.
   const [toolActivity, setToolActivity] = useState<ToolActivity[]>([])
   const [ocrBusyId, setOcrBusyId] = useState<string | null>(null)
@@ -167,15 +170,18 @@ export function ChatPanel({
     if (!conversationId) {
       setToolsEnabled(false)
       setKbId(null)
+      setEnabledSkills([])
       return
     }
     getConvoPrefs(conversationId)
       .then((p) => {
         setToolsEnabled(!!p.toolsEnabled)
         setKbId(p.kbId ?? null)
+        setEnabledSkills(p.enabledSkills ?? [])
       })
       .catch(console.error)
     listKnowledgeBases().then(setKbs).catch(console.error)
+    listSkills().then(setAllSkills).catch(() => setAllSkills([]))
     mcpListTools().then(setConnectedTools).catch(() => setConnectedTools([]))
   }, [conversationId])
 
@@ -191,6 +197,12 @@ export function ChatPanel({
     if (!conversationId) return
     setKbId(id)
     void setConvoPrefs(conversationId, { kbId: id })
+  }
+
+  function pickSkills(names: string[]) {
+    if (!conversationId) return
+    setEnabledSkills(names)
+    void setConvoPrefs(conversationId, { enabledSkills: names })
   }
 
   // Run OCR over a staged image and fold the text into the attachment so it
@@ -284,6 +296,10 @@ export function ChatPanel({
         connectedTools.length > 0 &&
         target.provider !== 'gemini'
       const toolSpecs = useTools ? toolsToSpecs(connectedTools) : undefined
+      // Skills also drive the agentic loop (even without MCP tools); Gemini
+      // tool-use isn't wired, so skip there.
+      const skillsForTurn =
+        target.provider !== 'gemini' && enabledSkills.length > 0 ? enabledSkills : undefined
 
       try {
         const handle = chatStream(
@@ -298,6 +314,7 @@ export function ChatPanel({
               ? { maxTokens: maxTokensOverride }
               : {}),
             ...(toolSpecs ? { tools: toolSpecs } : {}),
+            ...(skillsForTurn ? { enabledSkills: skillsForTurn } : {}),
           },
           (e) => {
             if (e.type === 'token') {
@@ -370,7 +387,16 @@ export function ChatPanel({
       if (cancelled) return null
       return null
     },
-    [conversationId, conversation, onTitleChanged, kbId, kbs, toolsEnabled, connectedTools],
+    [
+      conversationId,
+      conversation,
+      onTitleChanged,
+      kbId,
+      kbs,
+      toolsEnabled,
+      connectedTools,
+      enabledSkills,
+    ],
   )
 
   const onSend = useCallback(async () => {
@@ -542,6 +568,7 @@ export function ChatPanel({
             )}
           </button>
           <KbChip kbs={kbs} value={kbId} onPick={pickKb} />
+          <SkillsChip skills={allSkills} value={enabledSkills} onChange={pickSkills} />
         </div>
       )}
       <div className="messages" ref={scrollerRef}>
@@ -1121,6 +1148,73 @@ function KbChip({
               }}
             >
               {k.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// SkillsChip — chat-header chip that multi-selects which imported skills are
+// active for this conversation (toggled checkboxes; persisted via convoPrefs).
+function SkillsChip({
+  skills,
+  value,
+  onChange,
+}: {
+  skills: SkillMeta[]
+  value: string[]
+  onChange: (names: string[]) => void
+}) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  // No skills imported yet → keep the header tidy.
+  if (skills.length === 0) return null
+
+  const active = value.filter((n) => skills.some((s) => s.name === n))
+
+  function toggle(name: string) {
+    onChange(active.includes(name) ? active.filter((n) => n !== name) : [...active, name])
+  }
+
+  return (
+    <div className="kb-chip-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className={`model-chip kb-chip ${active.length > 0 ? 'override' : ''}`}
+        onClick={() => setOpen((o) => !o)}
+        title={active.length > 0 ? active.join(', ') : t('chat.skillsNone')}
+      >
+        <span className="label">
+          🧩 {t('chat.skills')}
+          {active.length > 0 ? ` (${active.length})` : ''}
+        </span>
+        <span className="caret">▾</span>
+      </button>
+      {open && (
+        <div className="kb-chip-popover">
+          {skills.map((s) => (
+            <button
+              key={s.name}
+              type="button"
+              className={`kb-chip-item ${active.includes(s.name) ? 'active' : ''}`}
+              onClick={() => toggle(s.name)}
+              title={s.description}
+            >
+              {active.includes(s.name) ? '✓ ' : ''}
+              {s.name}
             </button>
           ))}
         </div>

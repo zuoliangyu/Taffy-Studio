@@ -30,6 +30,7 @@ import type {
   KnowledgeBasePatch,
   RetrievedChunk,
 } from '../lib/rag'
+import type { SkillMeta } from '../lib/skills'
 import type { BackupInfo, StorageInfo } from '../lib/storage'
 import type { EmbedRequest } from './tauriApi'
 
@@ -271,6 +272,36 @@ export function ragSearch(
   topK: number,
 ): Promise<RetrievedChunk[]> {
   return postJson<RetrievedChunk[]>(`${kbPath(kbId)}/search`, { embedding, topK })
+}
+
+// ---------- skills ----------
+
+export function skillList(): Promise<SkillMeta[]> {
+  return getJson<SkillMeta[]>('/api/skills')
+}
+
+export function skillImportMarkdown(content: string): Promise<SkillMeta> {
+  return postJson<SkillMeta>('/api/skills', { content })
+}
+
+export async function skillImportZip(bytes: ArrayBuffer): Promise<SkillMeta> {
+  const tok =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('taffy_token') : null
+  const headers: Record<string, string> = { 'content-type': 'application/zip' }
+  if (tok) headers.authorization = `Bearer ${tok}`
+  const r = await fetch('/api/skills/import-zip', { method: 'POST', headers, body: bytes })
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text().catch(() => '')}`)
+  return r.json() as Promise<SkillMeta>
+}
+
+export function skillDelete(name: string): Promise<void> {
+  return send(`/api/skills/${encodeURIComponent(name)}`, 'DELETE')
+}
+
+export async function skillRead(name: string): Promise<string> {
+  const r = await fetch(`/api/skills/${encodeURIComponent(name)}`, { headers: authHeaders() })
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.text()
 }
 
 // ---------- full-text search + JSON export/import ----------

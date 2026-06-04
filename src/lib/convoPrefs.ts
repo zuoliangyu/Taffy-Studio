@@ -7,6 +7,8 @@ import { getSetting, setSetting } from './store'
 export interface ConvoPrefs {
   toolsEnabled?: boolean
   kbId?: string | null
+  /** Skill names enabled for this conversation. */
+  enabledSkills?: string[]
 }
 
 const STORE_KEY = 'convoPrefs'
