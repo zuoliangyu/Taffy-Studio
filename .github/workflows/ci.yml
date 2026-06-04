@@ -20,9 +20,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # No `version:` — pnpm/action-setup reads packageManager from package.json
+      # (pinned to pnpm@10.20.0), so CI and local stay identical.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -39,8 +39,6 @@ jobs:
       - name: Vite build
         run: pnpm build
 
-      # Required for the Rust step that follows in `rust` job (parallel),
-      # but also useful here: surface bundle-size warnings in the PR log.
       - name: Upload dist artifact
         uses: actions/upload-artifact@v4
         with:
@@ -48,16 +46,16 @@ jobs:
           path: dist/
           retention-days: 3
 
-  # ---- Rust: fmt + clippy + check (Linux, deps via apt) --------------
+  # ---- Rust: fmt + clippy + check + test (whole workspace) -----------
   rust:
-    name: Rust (fmt + clippy + check)
+    name: Rust (workspace fmt + clippy + check + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      # Tauri on Linux needs webkit2gtk and friends even for `cargo check`
-      # because the macro `generate_context!` reads the bundle config and
-      # validates plugin manifests.
+      # Tauri (src-tauri) needs webkit2gtk etc. even for `cargo check` because
+      # generate_context! reads the bundle config + validates plugin manifests.
+      # taffy-core / taffy-web don't, but a workspace build pulls in src-tauri.
       - name: Install Linux system deps
         run: |
           sudo apt-get update
@@ -78,14 +76,11 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
 
-      # `cargo check` needs a `dist/` to satisfy generate_context!. Build
-      # the frontend here in this job (cheap — no Node deps yet, so we
-      # install pnpm just for this) rather than reaching across jobs.
+      # Both generate_context! (src-tauri) and rust-embed (taffy-web) need a
+      # built `dist/`, so build the frontend before any cargo step.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -94,22 +89,35 @@ jobs:
       - run: pnpm build
 
       - name: cargo fmt --check
-        working-directory: src-tauri
         run: cargo fmt --all -- --check
 
-      - name: cargo clippy
-        working-directory: src-tauri
-        run: cargo clippy --all-targets -- -D warnings
+      - name: cargo clippy (workspace)
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
-      - name: cargo check
-        working-directory: src-tauri
-        run: cargo check --all-targets
+      - name: cargo check (workspace)
+        run: cargo check --workspace --all-targets
 
-      # Migration upgrade-path smoke test: exercises the v1→v_latest chain
-      # on a temp SQLite, seeds rows at each step, and asserts older data
-      # survives + new columns/triggers/indices wire correctly. The first
-      # thing it caught was a broken v7 FTS5 backfill that had shipped
-      # silently — keep this step running on every PR.
-      - name: cargo test (migration chain)
-        working-directory: src-tauri
-        run: cargo test --all-targets -- --nocapture
+      # Data-layer coverage lives in taffy-core: migration chain (incl. adopting
+      # an existing plugin-sql DB), CRUD, FTS sync, KV. Runs on every PR.
+      - name: cargo test (workspace)
+        run: cargo test --workspace -- --nocapture
+
+  # ---- Web image: validate the self-hosted Docker build --------------
+  web-docker:
+    name: Web image (docker build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build web image (no push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/web.Dockerfile
+          load: true
+          tags: taffy-web:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -42,6 +42,23 @@ struct Config {
     /// Bearer token gating the API (single-user). No auth if unset.
     #[arg(long, env = "TAFFY_TOKEN")]
     token: Option<String>,
+
+    /// Don't auto-open the browser on startup (headless servers / containers).
+    #[arg(long, env = "TAFFY_NO_OPEN")]
+    no_open: bool,
+}
+
+/// Best-effort: open the default browser at `url`. Errors are ignored (headless
+/// boxes have no browser, which is fine).
+fn open_browser(url: &str) {
+    #[cfg(target_os = "windows")]
+    let _ = std::process::Command::new("cmd")
+        .args(["/C", "start", "", url])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let _ = std::process::Command::new("open").arg(url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let _ = std::process::Command::new("xdg-open").arg(url).spawn();
 }
 
 #[derive(Clone)]
@@ -359,6 +376,16 @@ async fn main() {
         tracing::info!("Auth enabled (Bearer token required)");
     } else {
         tracing::warn!("No auth — set --token / TAFFY_TOKEN to require a Bearer token");
+    }
+
+    if !config.no_open {
+        let port = config.port;
+        tokio::spawn(async move {
+            // Give the server a beat to start accepting before we point a
+            // browser at it.
+            tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+            open_browser(&format!("http://localhost:{port}"));
+        });
     }
 
     axum::serve(listener, app).await.expect("server error");

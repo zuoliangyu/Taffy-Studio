@@ -106,6 +106,33 @@ pnpm tauri:dev      # first run compiles ~400 Rust crates (5–10 min)
 
 Open Settings (⚙ in the top-right), pick a provider preset (OpenAI / Anthropic / Gemini / DeepSeek / SiliconFlow / Ollama), paste your API key, then chat.
 
+## 🌐 Self-hosted web server
+
+The same codebase compiles to a **single executable** that serves the UI in a
+browser (no desktop required) — for Windows / macOS / Linux and headless Linux
+servers or Docker.
+
+```powershell
+# Windows: produces dist-web\taffy-web.exe and runs it (auto-opens the browser)
+.\scripts\build-web.ps1 -Run
+```
+```bash
+# macOS / Linux: produces dist-web/taffy-web
+RUN=1 ./scripts/build-web.sh
+```
+
+- Defaults to `127.0.0.1:8787`, data in `./taffy.db`. `--host 0.0.0.0` to expose
+  on the LAN, `--db-path` to relocate data, `--token <secret>` for single-user
+  auth, `--no-open` to skip auto-opening the browser.
+- Provider keys are injected from the environment (`TAFFY_OPENAI_API_KEY` /
+  `TAFFY_ANTHROPIC_API_KEY` / `TAFFY_GEMINI_API_KEY` / fallback `TAFFY_API_KEY`);
+  the browser never sees them.
+- Docker: `.\scripts\dev-docker.ps1` (or `./scripts/dev-docker.sh`), see
+  `docker/web.Dockerfile`.
+
+> Web today: chat + conversation history work; full-text search / knowledge
+> bases (RAG) / import-export are still being made semantic (see the roadmap).
+
 ## ⚙️ Prerequisites
 
 | Tool | Why |

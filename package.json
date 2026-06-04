@@ -65,5 +65,12 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "packageManager": "pnpm@10.20.0",
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "tesseract.js"
+    ]
   }
 }

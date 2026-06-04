@@ -37,4 +37,4 @@ VOLUME ["/data"]
 # Provider keys come from the environment (TAFFY_API_KEY / TAFFY_OPENAI_API_KEY
 # / TAFFY_ANTHROPIC_API_KEY / TAFFY_GEMINI_API_KEY); set TAFFY_TOKEN to require
 # a Bearer token.
-ENTRYPOINT ["taffy-web", "--host", "0.0.0.0", "--db-path", "/data/taffy.db"]
+ENTRYPOINT ["taffy-web", "--host", "0.0.0.0", "--db-path", "/data/taffy.db", "--no-open"]

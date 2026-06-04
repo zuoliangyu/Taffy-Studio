@@ -185,16 +185,20 @@ export function embedTexts(req: EmbedRequest): Promise<number[][]> {
 
 // ---------- MCP ----------
 
+// MCP runs stdio subprocesses, which a browser can't. Degrade gracefully:
+// the web shell simply has no connected servers / tools (rather than throwing
+// and crashing flows like "new chat" that query the tool list). Server-side
+// MCP can be wired into taffy-web later.
 export function mcpConnect(_config: McpServerConfig): Promise<McpTool[]> {
-  return notImpl('mcpConnect')
+  return Promise.resolve([])
 }
 
 export function mcpDisconnect(_id: string): Promise<void> {
-  return notImpl('mcpDisconnect')
+  return Promise.resolve()
 }
 
 export function mcpListTools(): Promise<McpTool[]> {
-  return notImpl('mcpListTools')
+  return Promise.resolve([])
 }
 
 export function mcpCallTool(

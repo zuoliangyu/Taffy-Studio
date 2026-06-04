@@ -9,7 +9,8 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write # needed to create the GitHub Release
+  contents: write # create the GitHub Release
+  packages: write # push the web image to GHCR
 
 jobs:
   # ---- Desktop matrix: Windows / macOS / Linux ------------------------
@@ -49,8 +50,8 @@ jobs:
             libxdo-dev \
             patchelf
 
+      # No `version:` — reads packageManager (pnpm@10.20.0) from package.json.
       - uses: pnpm/action-setup@v4
-        with: { version: 9 }
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -64,30 +65,25 @@ jobs:
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           key: ${{ matrix.rust-target }}
 
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
 
       - name: Build (frontend + tauri bundle)
-        # The tauri-action wrapper would also work; calling pnpm directly
-        # keeps the script identical to local builds. Signing env vars are
-        # consumed by tauri-bundler — they're empty in PRs (no signing), and
-        # set on tag pushes via repo secrets so the updater bundles get .sig
-        # sidecars. See docs/UPDATER.md for the setup procedure.
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: pnpm tauri build --bundles ${{ matrix.bundles }} --target ${{ matrix.rust-target }}
 
       - name: Collect artifacts
-        # Tauri scatters outputs by bundle type — flatten them under one folder.
-        # We also grab .sig sidecars (updater signatures) when present.
+        # The Cargo workspace builds into the workspace-root ./target (not
+        # src-tauri/target). Flatten Tauri's per-bundle outputs + .sig sidecars.
         shell: bash
         run: |
           mkdir -p staged
-          src="src-tauri/target/${{ matrix.rust-target }}/release/bundle"
+          src="target/${{ matrix.rust-target }}/release/bundle"
           find "$src" -type f \( \
             -name '*.deb' -o -name '*.AppImage' -o -name '*.AppImage.tar.gz' -o -name '*.rpm' \
             -o -name '*.dmg' -o -name '*.app.tar.gz' \
@@ -101,6 +97,109 @@ jobs:
           name: desktop-${{ matrix.os }}
           path: staged/
           if-no-files-found: error
+
+  # ---- Web server: standalone single-binary per OS -------------------
+  web:
+    name: Web server (${{ matrix.label }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            label: linux-x86_64
+            ext: ''
+          - os: macos-14
+            label: macos-arm64
+            ext: ''
+          - os: macos-13
+            label: macos-x86_64
+            ext: ''
+          - os: windows-latest
+            label: windows-x86_64
+            ext: '.exe'
+    steps:
+      - uses: actions/checkout@v4
+
+      # taffy-web has no Tauri/system deps — just node + rust.
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: web-${{ matrix.label }}
+
+      - name: Build frontend (web bundle) + taffy-web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build
+          cargo build -p taffy-web --release
+
+      - name: Package binary
+        shell: bash
+        run: |
+          mkdir -p staged
+          if [ -n "${{ matrix.ext }}" ]; then
+            cp "target/release/taffy-web.exe" "staged/taffy-web-${{ matrix.label }}.exe"
+          else
+            tar -czf "staged/taffy-web-${{ matrix.label }}.tar.gz" -C target/release taffy-web
+          fi
+          ls -lah staged
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-${{ matrix.label }}
+          path: staged/
+          if-no-files-found: error
+
+  # ---- Web image: build + push to GHCR -------------------------------
+  docker:
+    name: Web image (GHCR)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/taffy-web
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/web.Dockerfile
+          # Push only on real tag releases; workflow_dispatch is a dry-run build.
+          push: ${{ startsWith(github.ref, 'refs/tags/v') }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # ---- Android via Docker (same image we use locally) ----------------
   android:
@@ -137,7 +236,7 @@ jobs:
   # ---- Aggregate + publish GH Release --------------------------------
   release:
     name: Publish GitHub Release
-    needs: [desktop, android]
+    needs: [desktop, web, android]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
@@ -154,12 +253,10 @@ jobs:
           find artifacts -type f -exec cp -v {} release/ \;
           ls -lah release
 
-      # Build latest.json from the bundles + .sig sidecars in release/. The
-      # script noisily refuses if no updater-eligible artifact has a
-      # matching .sig — which is what happens when the signing secrets
-      # weren't configured. That's the canary you want.
+      # Build latest.json from the desktop bundles + .sig sidecars. Refuses
+      # noisily if no updater-eligible artifact has a matching .sig — the
+      # canary for missing signing secrets.
       - name: Generate updater manifest (latest.json)
-        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           version="${GITHUB_REF_NAME#v}"
           node scripts/build-updater-manifest.mjs \

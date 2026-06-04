@@ -29,6 +29,9 @@ src-tauri/gen/
 dist-linux/
 dist-android/
 
+# Standalone web-server binary output (scripts/build-web.*).
+dist-web/
+
 # ============================================================
 # Internal-only docs — planning / WIP, not for the public repo.
 # Kept on disk locally; never tracked.
