@@ -22,3 +22,6 @@ reqwest = { version = "0.12", default-features = false, features = [
 # both shells (Tauri Channel adapter, axum SSE) can consume it.
 futures-util = "0.3"
 async-stream = "0.3"
+# Data layer: bundled SQLite (with FTS5) so neither shell needs a system lib.
+rusqlite = { version = "0.32", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
