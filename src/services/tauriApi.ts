@@ -8,8 +8,12 @@ import { platform } from '@tauri-apps/plugin-os'
 import type {
   Conversation,
   ConversationInit,
+  ExportedConversation,
+  ImportConversation,
+  ImportSummary,
   Message,
   MessageAttachment,
+  SearchHitRaw,
 } from '../lib/db'
 import type {
   ChatRequest,
@@ -182,6 +186,22 @@ export function ragSearch(
   topK: number,
 ): Promise<RetrievedChunk[]> {
   return invoke<RetrievedChunk[]>('rag_search', { kbId, embedding, topK })
+}
+
+// ---------- full-text search + JSON export/import ----------
+
+export function searchMessages(query: string, limit: number): Promise<SearchHitRaw[]> {
+  return invoke<SearchHitRaw[]>('search_messages', { query, limit })
+}
+
+export function exportConversations(): Promise<ExportedConversation[]> {
+  return invoke<ExportedConversation[]>('export_conversations')
+}
+
+export function importConversations(
+  conversations: ImportConversation[],
+): Promise<ImportSummary> {
+  return invoke<ImportSummary>('import_conversations', { conversations })
 }
 
 // ---------- storage / backups ----------

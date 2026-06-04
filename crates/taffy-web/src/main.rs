@@ -322,6 +322,39 @@ async fn rag_delete_doc_h(
     db.delete_document(&doc_id).map_err(ise)
 }
 
+// ---------- Full-text search + JSON export/import ----------
+
+#[derive(Deserialize)]
+struct SearchReq {
+    query: String,
+    #[serde(default = "default_search_limit")]
+    limit: i64,
+}
+
+fn default_search_limit() -> i64 {
+    50
+}
+
+async fn search_handler(
+    State(db): State<Shared>,
+    Json(b): Json<SearchReq>,
+) -> Result<Json<Vec<taffy_core::SearchHit>>, (StatusCode, String)> {
+    db.search_messages(&b.query, b.limit).map(Json).map_err(ise)
+}
+
+async fn export_handler(
+    State(db): State<Shared>,
+) -> Result<Json<Vec<taffy_core::ExportedConversation>>, (StatusCode, String)> {
+    db.export_conversations().map(Json).map_err(ise)
+}
+
+async fn import_handler(
+    State(db): State<Shared>,
+    Json(conversations): Json<Vec<taffy_core::ExportedConversation>>,
+) -> Result<Json<taffy_core::ImportSummary>, (StatusCode, String)> {
+    db.import_conversations(&conversations).map(Json).map_err(ise)
+}
+
 // ---------- conversations ----------
 
 #[derive(Deserialize)]
@@ -530,6 +563,9 @@ async fn main() {
         .route("/api/rag/kbs/{id}/chunks", post(rag_add_chunks_h))
         .route("/api/rag/kbs/{id}/search", post(rag_search_h))
         .route("/api/rag/documents/{docId}", delete(rag_delete_doc_h))
+        .route("/api/search", post(search_handler))
+        .route("/api/export", get(export_handler))
+        .route("/api/import", post(import_handler))
         .route("/api/conversations", get(conv_list_h).post(conv_create_h))
         .route("/api/conversations/{id}", delete(conv_delete_h))
         .route("/api/conversations/{id}/model", post(conv_model_h))

@@ -304,6 +304,67 @@ pub struct ChunkInput {
     pub embedding: Vec<f64>,
 }
 
+// ---------- Search + export/import DTOs ----------
+
+/// One FTS5 hit. `excerpt_raw` carries the snippet with `char(1)`/`char(2)`
+/// marker bytes around matched terms; the frontend HTML-escapes it then swaps
+/// the markers for `<b>`/`</b>` (kept frontend-side so the markup stays there).
+#[derive(Serialize, Debug)]
+pub struct SearchHit {
+    pub message_id: String,
+    pub conversation_id: String,
+    pub conversation_title: String,
+    pub role: String,
+    pub excerpt_raw: String,
+    pub created_at: i64,
+}
+
+/// A message inside an export document. `id` is serialized on export and
+/// ignored on import (new ids are minted), hence `#[serde(default)]`.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExportedMessage {
+    #[serde(default)]
+    pub id: String,
+    pub role: String,
+    pub content: String,
+    pub created_at: i64,
+    #[serde(default)]
+    pub attachments: Option<serde_json::Value>,
+}
+
+/// A conversation inside an export document, with its messages inlined. Optional
+/// fields default on import so older export files round-trip. The frontend
+/// validates + normalizes arbitrary import JSON before it reaches here.
+#[derive(Serialize, Deserialize, Debug)]
+pub struct ExportedConversation {
+    #[serde(default)]
+    pub id: String,
+    pub title: String,
+    pub created_at: i64,
+    pub updated_at: i64,
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub temperature: Option<f64>,
+    #[serde(default)]
+    pub pinned: Option<i64>,
+    #[serde(default)]
+    pub max_tokens: Option<i64>,
+    #[serde(default)]
+    pub system_prompt: Option<String>,
+    #[serde(default)]
+    pub messages: Vec<ExportedMessage>,
+}
+
+/// Counts of what an import actually inserted.
+#[derive(Serialize, Debug)]
+pub struct ImportSummary {
+    pub conversations: i64,
+    pub messages: i64,
+}
+
 // ---------- Db handle ----------
 
 pub struct Db {
@@ -822,6 +883,165 @@ impl Db {
         Ok(scored)
     }
 
+    // ----- full-text search -----
+
+    /// Run an FTS5 MATCH over `messages_fts` and return top hits with a snippet
+    /// excerpt. `fts` is the already-built MATCH expression (the frontend quotes
+    /// tokens + handles prefix `*`); a malformed expression surfaces as an Err
+    /// the caller can swallow into an empty result, matching the old behavior.
+    pub fn search_messages(&self, fts: &str, limit: i64) -> Result<Vec<SearchHit>, String> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "SELECT m.id AS message_id, m.conversation_id AS conversation_id, \
+                 c.title AS conversation_title, m.role AS role, \
+                 snippet(messages_fts, 0, char(1), char(2), char(0x2026), 16) AS excerpt_raw, \
+                 m.created_at AS created_at \
+                 FROM messages_fts \
+                 JOIN messages m ON m.rowid = messages_fts.rowid \
+                 JOIN conversations c ON c.id = m.conversation_id \
+                 WHERE messages_fts MATCH ?1 \
+                 ORDER BY rank LIMIT ?2",
+            )
+            .map_err(e2s)?;
+        let rows = stmt
+            .query_map(params![fts, limit], |r| {
+                Ok(SearchHit {
+                    message_id: r.get(0)?,
+                    conversation_id: r.get(1)?,
+                    conversation_title: r.get(2)?,
+                    role: r.get(3)?,
+                    excerpt_raw: r.get(4)?,
+                    created_at: r.get(5)?,
+                })
+            })
+            .map_err(e2s)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(e2s)?;
+        Ok(rows)
+    }
+
+    // ----- JSON export / import -----
+
+    /// Every conversation + its messages, oldest-first, for a self-contained
+    /// JSON export. The frontend wraps this in the export envelope
+    /// (schemaVersion / exportedAt / appVersion) and pretty-prints it.
+    pub fn export_conversations(&self) -> Result<Vec<ExportedConversation>, String> {
+        let conn = self.lock();
+        let mut conv_stmt = conn
+            .prepare(
+                "SELECT id, title, created_at, updated_at, provider_id, model, \
+                 temperature, pinned, max_tokens, system_prompt \
+                 FROM conversations ORDER BY created_at ASC",
+            )
+            .map_err(e2s)?;
+        let convos = conv_stmt
+            .query_map([], row_to_conversation)
+            .map_err(e2s)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(e2s)?;
+        let mut msg_stmt = conn
+            .prepare(
+                "SELECT id, conversation_id, role, content, created_at, attachments \
+                 FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
+            )
+            .map_err(e2s)?;
+        let mut out = Vec::with_capacity(convos.len());
+        for c in convos {
+            let messages = msg_stmt
+                .query_map(params![c.id], row_to_message)
+                .map_err(e2s)?
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(e2s)?
+                .into_iter()
+                .map(|m| ExportedMessage {
+                    id: m.id,
+                    role: m.role,
+                    content: m.content,
+                    created_at: m.created_at,
+                    attachments: m.attachments,
+                })
+                .collect();
+            out.push(ExportedConversation {
+                id: c.id,
+                title: c.title,
+                created_at: c.created_at,
+                updated_at: c.updated_at,
+                provider_id: c.provider_id,
+                model: c.model,
+                temperature: c.temperature,
+                pinned: Some(c.pinned.unwrap_or(0)),
+                max_tokens: c.max_tokens,
+                system_prompt: c.system_prompt,
+                messages,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Insert conversations + messages from a (frontend-validated) export.
+    /// Fresh UUIDs are minted so re-importing the same file produces independent
+    /// copies instead of clobbering existing rows. Returns counts inserted.
+    pub fn import_conversations(
+        &self,
+        convos: &[ExportedConversation],
+    ) -> Result<ImportSummary, String> {
+        let conn = self.lock();
+        let mut conv_count = 0i64;
+        let mut msg_count = 0i64;
+        for c in convos {
+            let new_conv_id = new_id();
+            let title = if c.title.is_empty() {
+                "Imported conversation".to_string()
+            } else {
+                c.title.clone()
+            };
+            // pinned: anything truthy → 1, else 0 (matches the frontend).
+            let pinned = i64::from(c.pinned.unwrap_or(0) != 0);
+            let max_tokens = c.max_tokens.filter(|m| *m > 0);
+            let system_prompt = c.system_prompt.as_deref().filter(|s| !s.is_empty());
+            conn.execute(
+                "INSERT INTO conversations \
+                 (id, title, created_at, updated_at, provider_id, model, temperature, pinned, max_tokens, system_prompt) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                params![
+                    new_conv_id,
+                    title,
+                    c.created_at,
+                    c.updated_at,
+                    c.provider_id,
+                    c.model,
+                    c.temperature,
+                    pinned,
+                    max_tokens,
+                    system_prompt,
+                ],
+            )
+            .map_err(e2s)?;
+            conv_count += 1;
+            for m in &c.messages {
+                // Only store a non-empty attachment array, mirroring append_message.
+                let attachments_json = match &m.attachments {
+                    Some(serde_json::Value::Array(a)) if !a.is_empty() => {
+                        Some(serde_json::to_string(&m.attachments).map_err(e2s)?)
+                    }
+                    _ => None,
+                };
+                conn.execute(
+                    "INSERT INTO messages (id, conversation_id, role, content, created_at, attachments) \
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                    params![new_id(), new_conv_id, m.role, m.content, m.created_at, attachments_json],
+                )
+                .map_err(e2s)?;
+                msg_count += 1;
+            }
+        }
+        Ok(ImportSummary {
+            conversations: conv_count,
+            messages: msg_count,
+        })
+    }
+
     /// Wipe all user data (keeps the schema). Used by the "reset database"
     /// action — done in-connection rather than deleting the file so it works
     /// while the handle is open (Windows won't unlink an open SQLite file).
@@ -1125,6 +1345,39 @@ mod tests {
         assert_eq!(db.count_chunks(&kb.id).unwrap(), 0);
         db.delete_knowledge_base(&kb.id).unwrap();
         assert_eq!(db.list_knowledge_bases().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn search_and_export_import_round_trip() {
+        let db = Db::open_in_memory().unwrap();
+        let c = db
+            .create_conversation("Trip", &ConversationInit::default())
+            .unwrap();
+        db.append_message(&c.id, "user", "hello kangaroo", None).unwrap();
+        db.append_message(&c.id, "assistant", "the kangaroo hops", None)
+            .unwrap();
+
+        // FTS: prefix match on a quoted token, snippet markers present.
+        let hits = db.search_messages("\"kangaroo\"", 50).unwrap();
+        assert_eq!(hits.len(), 2);
+        assert!(hits.iter().all(|h| h.conversation_title == "Trip"));
+        assert!(hits[0].excerpt_raw.contains('\u{1}')); // <b> marker byte
+        // Malformed MATCH surfaces as an Err (caller swallows it).
+        assert!(db.search_messages("AND", 50).is_err());
+
+        // Export captures both messages under the one conversation.
+        let exported = db.export_conversations().unwrap();
+        assert_eq!(exported.len(), 1);
+        assert_eq!(exported[0].messages.len(), 2);
+        assert_eq!(exported[0].title, "Trip");
+
+        // Import mints fresh ids → additive (now two conversations, four msgs).
+        let summary = db.import_conversations(&exported).unwrap();
+        assert_eq!(summary.conversations, 1);
+        assert_eq!(summary.messages, 2);
+        assert_eq!(db.list_conversations().unwrap().len(), 2);
+        let total_hits = db.search_messages("\"kangaroo\"", 50).unwrap();
+        assert_eq!(total_hits.len(), 4);
     }
 
     #[test]

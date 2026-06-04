@@ -15,8 +15,12 @@ import type {
 import type {
   Conversation,
   ConversationInit,
+  ExportedConversation,
+  ImportConversation,
+  ImportSummary,
   Message,
   MessageAttachment,
+  SearchHitRaw,
 } from '../lib/db'
 import type { McpServerConfig, McpTool } from '../lib/mcp'
 import type {
@@ -267,6 +271,22 @@ export function ragSearch(
   topK: number,
 ): Promise<RetrievedChunk[]> {
   return postJson<RetrievedChunk[]>(`${kbPath(kbId)}/search`, { embedding, topK })
+}
+
+// ---------- full-text search + JSON export/import ----------
+
+export function searchMessages(query: string, limit: number): Promise<SearchHitRaw[]> {
+  return postJson<SearchHitRaw[]>('/api/search', { query, limit })
+}
+
+export function exportConversations(): Promise<ExportedConversation[]> {
+  return getJson<ExportedConversation[]>('/api/export')
+}
+
+export function importConversations(
+  conversations: ImportConversation[],
+): Promise<ImportSummary> {
+  return postJson<ImportSummary>('/api/import', conversations)
 }
 
 // ---------- storage / backups ----------

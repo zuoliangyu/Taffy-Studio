@@ -742,6 +742,32 @@ fn rag_search(
     db.search_knowledge(&kb_id, &embedding, top_k)
 }
 
+// ---------- Full-text search + JSON export/import ----------
+
+#[tauri::command]
+fn search_messages(
+    db: State<'_, taffy_core::Db>,
+    query: String,
+    limit: i64,
+) -> Result<Vec<taffy_core::SearchHit>, String> {
+    db.search_messages(&query, limit)
+}
+
+#[tauri::command]
+fn export_conversations(
+    db: State<'_, taffy_core::Db>,
+) -> Result<Vec<taffy_core::ExportedConversation>, String> {
+    db.export_conversations()
+}
+
+#[tauri::command]
+fn import_conversations(
+    db: State<'_, taffy_core::Db>,
+    conversations: Vec<taffy_core::ExportedConversation>,
+) -> Result<taffy_core::ImportSummary, String> {
+    db.import_conversations(&conversations)
+}
+
 // ---------- Entry ----------
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -835,6 +861,10 @@ pub fn run() {
             rag_delete_doc,
             rag_add_chunks,
             rag_search,
+            // search + export/import (taffy-core::db)
+            search_messages,
+            export_conversations,
+            import_conversations,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

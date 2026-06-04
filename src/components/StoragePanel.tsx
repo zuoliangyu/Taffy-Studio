@@ -30,6 +30,47 @@ function isoDate(d: Date): string {
   return `${y}${m}${day}`
 }
 
+// On desktop we save/open via the native dialog + Rust file I/O; in the browser
+// there is no filesystem, so export becomes a Blob download and import a hidden
+// <input type=file>. The data itself round-trips through the same backend
+// export/import endpoints either way.
+const IS_TAURI = __IS_TAURI__
+
+function downloadTextFile(filename: string, text: string): void {
+  const blob = new Blob([text], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  URL.revokeObjectURL(url)
+}
+
+/** Prompt for a JSON file and resolve its text, or null if the user cancels. */
+function pickJsonFile(): Promise<string | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'application/json,.json'
+    input.onchange = () => {
+      const file = input.files?.[0]
+      if (!file) {
+        resolve(null)
+        return
+      }
+      const reader = new FileReader()
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : null)
+      reader.onerror = () => resolve(null)
+      reader.readAsText(file)
+    }
+    // Fires when the picker is dismissed without a selection (modern browsers).
+    input.oncancel = () => resolve(null)
+    input.click()
+  })
+}
+
 export function StoragePanel() {
   const [info, setInfo] = useState<StorageInfo | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -38,6 +79,9 @@ export function StoragePanel() {
   const [lastImport, setLastImport] = useState<ImportSummary | null>(null)
 
   const refresh = useCallback(async () => {
+    // storageInfo (DB path, on-disk backups) is a desktop-only concept; the web
+    // shell stores everything server-side and has no local file surface.
+    if (!IS_TAURI) return
     try {
       setInfo(await storageInfo())
       setError(null)
@@ -96,12 +140,17 @@ export function StoragePanel() {
     try {
       // Build the JSON first so a dialog cancel doesn't leave us mid-export.
       const json = await exportConversationsToJson()
-      const path = await saveDialog({
-        defaultPath: `taffy-studio-${isoDate(new Date())}.json`,
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-      })
-      if (!path) return // user cancelled
-      await fsWriteTextAbs(path, json)
+      const filename = `taffy-studio-${isoDate(new Date())}.json`
+      if (IS_TAURI) {
+        const path = await saveDialog({
+          defaultPath: filename,
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+        })
+        if (!path) return // user cancelled
+        await fsWriteTextAbs(path, json)
+      } else {
+        downloadTextFile(filename, json)
+      }
     } catch (e) {
       setError(String(e))
     } finally {
@@ -114,24 +163,31 @@ export function StoragePanel() {
     setError(null)
     setLastImport(null)
     try {
-      const picked = await openDialog({
-        multiple: false,
-        filters: [{ name: 'JSON', extensions: ['json'] }],
-      })
-      if (!picked) return
-      // openDialog can return string | FileResponse depending on version; we
-      // normalize down to a path string. multiple:false guarantees not array.
-      const path =
-        typeof picked === 'string'
-          ? picked
-          : Array.isArray(picked)
-            ? null
-            : (picked as { path?: string }).path ?? null
-      if (!path) {
-        setError('Could not read the selected file path.')
-        return
+      let text: string
+      if (IS_TAURI) {
+        const picked = await openDialog({
+          multiple: false,
+          filters: [{ name: 'JSON', extensions: ['json'] }],
+        })
+        if (!picked) return
+        // openDialog can return string | FileResponse depending on version; we
+        // normalize down to a path string. multiple:false guarantees not array.
+        const path =
+          typeof picked === 'string'
+            ? picked
+            : Array.isArray(picked)
+              ? null
+              : (picked as { path?: string }).path ?? null
+        if (!path) {
+          setError('Could not read the selected file path.')
+          return
+        }
+        text = await fsReadTextAbs(path)
+      } else {
+        const picked = await pickJsonFile()
+        if (picked == null) return // user cancelled
+        text = picked
       }
-      const text = await fsReadTextAbs(path)
       const summary = await importConversationsFromJson(text)
       setLastImport(summary)
       // Refresh storage stats so the user sees the bumped DB size; then a
@@ -150,7 +206,43 @@ export function StoragePanel() {
     <section className="storage-section">
       <h3>Storage</h3>
 
-      {info ? (
+      {!IS_TAURI ? (
+        <>
+          <p className="muted-small">
+            Conversations are stored on the server. Export downloads a JSON
+            backup; Import merges one back in (new IDs minted, nothing
+            overwritten).
+          </p>
+          <div className="storage-actions">
+            <button
+              type="button"
+              className="ghost small"
+              onClick={onExport}
+              disabled={busy !== null}
+              title="Download every conversation + message as a single JSON file"
+            >
+              {busy === 'export' ? 'Exporting…' : 'Export JSON…'}
+            </button>
+            <button
+              type="button"
+              className="ghost small"
+              onClick={onImport}
+              disabled={busy !== null}
+              title="Merge conversations from an export JSON (new IDs minted; nothing overwritten)"
+            >
+              {busy === 'import' ? 'Importing…' : 'Import JSON…'}
+            </button>
+          </div>
+          {lastImport && (
+            <div className="storage-notice">
+              Imported {lastImport.conversations} conversation
+              {lastImport.conversations === 1 ? '' : 's'} ·{' '}
+              {lastImport.messages} message{lastImport.messages === 1 ? '' : 's'}.
+              <span className="muted-small"> Reloading…</span>
+            </div>
+          )}
+        </>
+      ) : info ? (
         <>
           <dl className="kv">
             <dt>Database</dt>

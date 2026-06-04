@@ -1,5 +1,6 @@
-// SQLite access goes through the Tauri SQL plugin (sqlx under the hood).
-// Schema evolution lives in Rust (see src-tauri/src/lib.rs Migration list).
+// Data access goes through the `api` layer (Tauri commands on desktop, HTTP on
+// web), all backed by taffy-core::db. Schema evolution + the query SQL live in
+// Rust (see crates/taffy-core/src/db.rs).
 import { api } from '../services/api'
 
 export interface Conversation {
@@ -43,18 +44,6 @@ export interface Message {
   attachments?: MessageAttachment[]
 }
 
-/** SQLite gives us TEXT for the attachments column; parse JSON safely. */
-function parseAttachments(raw: unknown): MessageAttachment[] | undefined {
-  if (raw == null || raw === '') return undefined
-  if (typeof raw !== 'string') return undefined
-  try {
-    const v = JSON.parse(raw)
-    return Array.isArray(v) ? v : undefined
-  } catch {
-    return undefined
-  }
-}
-
 /** Minimal DB surface used across this module + rag.ts. Backed by the backend
  *  driver (`services/api`): Tauri → plugin-sql; web → server SQL endpoint. The
  *  `.select` / `.execute` shape is kept identical to tauri-plugin-sql so all
@@ -92,11 +81,11 @@ export function uuid(): string {
   return crypto.randomUUID()
 }
 
-// Conversation + message ops are now SEMANTIC: they delegate to the backend
-// driver (`services/api`), which runs them in taffy-core::db (Tauri command on
-// desktop, HTTP route on web). The SQL itself lives in Rust. Search / RAG /
-// export below still use the low-level `db()` facade pending their own
-// semantic endpoints.
+// All data ops are now SEMANTIC: they delegate to the backend driver
+// (`services/api`), which runs them in taffy-core::db (Tauri command on desktop,
+// HTTP route on web) — conversations, messages, search, RAG, export/import. The
+// SQL lives in Rust. The `db()` / `getDb()` generic-SQL facade below is kept as
+// an escape hatch but no longer has a frontend caller.
 
 export function listConversations(): Promise<Conversation[]> {
   return api.listConversations()
@@ -190,6 +179,17 @@ export function deleteConversation(id: string): Promise<void> {
 
 // ---------- Full-text search (FTS5) ----------
 
+/** Raw FTS hit from the backend: `excerpt_raw` still carries the snippet marker
+ *  bytes (the frontend escapes + marks them up). Mirrors Rust `SearchHit`. */
+export interface SearchHitRaw {
+  message_id: string
+  conversation_id: string
+  conversation_title: string
+  role: Message['role']
+  excerpt_raw: string
+  created_at: number
+}
+
 export interface SearchHit {
   message_id: string
   conversation_id: string
@@ -244,39 +244,19 @@ function escapeAndMarkup(raw: string): string {
 }
 
 /** Run an FTS5 MATCH and return top hits with HTML-marked excerpts. Empty
- *  / whitespace-only input short-circuits to no hits. */
+ *  / whitespace-only input short-circuits to no hits. The MATCH query is built
+ *  here; the backend (taffy-core::db) runs it and returns marker-tagged
+ *  snippets which we HTML-escape then mark up. snippet() emits the markers via
+ *  char(1)/char(2), so they round-trip exactly. */
 export async function searchMessages(
   query: string,
   limit = 50,
 ): Promise<SearchHit[]> {
   const fts = toFtsQuery(query)
   if (fts.length === 0) return []
-  const conn = await db()
-  // Snippet markers are control characters so they cannot collide with user
-  // text. We HTML-escape the surrounding text in JS, then swap markers for
-  // <b>/</b>. snippet() takes: (table, col, start, end, ellip, ntokens).
-  type Row = {
-    message_id: string
-    conversation_id: string
-    conversation_title: string
-    role: Message['role']
-    excerpt_raw: string
-    created_at: number
-  }
-  let rows: Row[]
+  let rows: SearchHitRaw[]
   try {
-    rows = await conn.select<Row[]>(
-      'SELECT m.id AS message_id, m.conversation_id AS conversation_id, ' +
-        "c.title AS conversation_title, m.role AS role, " +
-        "snippet(messages_fts, 0, char(1), char(2), char(0x2026), 16) AS excerpt_raw, " +
-        'm.created_at AS created_at ' +
-        'FROM messages_fts ' +
-        'JOIN messages m ON m.rowid = messages_fts.rowid ' +
-        'JOIN conversations c ON c.id = m.conversation_id ' +
-        'WHERE messages_fts MATCH $1 ' +
-        'ORDER BY rank LIMIT $2',
-      [fts, limit],
-    )
+    rows = await api.searchMessages(fts, limit)
   } catch (e) {
     // Malformed FTS5 syntax (`AND` alone, mismatched quotes after our escape,
     // …) shouldn't crash the UI — return empty results and surface via the
@@ -339,53 +319,48 @@ export interface ImportSummary {
   messages: number
 }
 
+/** One message in the normalized import payload (no id — the backend mints
+ *  fresh ones). Mirrors the fields the Rust importer reads. */
+export interface ImportMessage {
+  role: Message['role']
+  content: string
+  created_at: number
+  attachments: MessageAttachment[] | null
+}
+
+/** One conversation in the normalized import payload (no id — backend-minted). */
+export interface ImportConversation {
+  title: string
+  created_at: number
+  updated_at: number
+  provider_id: string | null
+  model: string | null
+  temperature: number | null
+  pinned: number
+  max_tokens: number | null
+  system_prompt: string | null
+  messages: ImportMessage[]
+}
+
 /** Serialize every conversation + its messages into a single JSON document.
- *  Attachments (base64) are embedded — exports are self-contained and can
- *  re-import on a fresh machine with no external files. */
+ *  The backend gathers the rows (taffy-core::db); we just wrap them in the
+ *  export envelope. Attachments (base64) are embedded — exports are
+ *  self-contained and re-import on a fresh machine with no external files. */
 export async function exportConversationsToJson(appVersion?: string): Promise<string> {
-  const conn = await db()
-  const convos = await conn.select<Conversation[]>(
-    'SELECT id, title, created_at, updated_at, provider_id, model, temperature, pinned, max_tokens, system_prompt FROM conversations ORDER BY created_at ASC',
-  )
-  type RawMessage = Omit<Message, 'attachments'> & { attachments: unknown }
-  const exported: ExportedConversation[] = []
-  for (const c of convos) {
-    const rows = await conn.select<RawMessage[]>(
-      'SELECT id, conversation_id, role, content, created_at, attachments FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC',
-      [c.id],
-    )
-    exported.push({
-      id: c.id,
-      title: c.title,
-      created_at: c.created_at,
-      updated_at: c.updated_at,
-      provider_id: c.provider_id ?? null,
-      model: c.model ?? null,
-      temperature: c.temperature ?? null,
-      pinned: c.pinned ?? 0,
-      max_tokens: c.max_tokens ?? null,
-      system_prompt: c.system_prompt ?? null,
-      messages: rows.map((r) => ({
-        id: r.id,
-        role: r.role,
-        content: r.content,
-        created_at: r.created_at,
-        attachments: parseAttachments(r.attachments) ?? null,
-      })),
-    })
-  }
+  const conversations = await api.exportConversations()
   const doc: ExportFile = {
     schemaVersion: EXPORT_SCHEMA_VERSION,
     exportedAt: Date.now(),
     appVersion,
-    conversations: exported,
+    conversations,
   }
   return JSON.stringify(doc, null, 2)
 }
 
-/** Insert conversations + messages from an export JSON. New UUIDs are minted
- *  so re-importing the same file produces independent copies instead of
- *  clobbering existing rows. Returns counts of what was actually inserted. */
+/** Parse + validate an export JSON, then hand a normalized payload to the
+ *  backend, which inserts it under fresh UUIDs (re-importing the same file
+ *  produces independent copies instead of clobbering existing rows). Validation
+ *  stays here so arbitrary files are sanitized before they reach SQL. */
 export async function importConversationsFromJson(json: string): Promise<ImportSummary> {
   let parsed: unknown
   try {
@@ -410,51 +385,43 @@ export async function importConversationsFromJson(json: string): Promise<ImportS
     throw new Error('Import file has no `conversations` array.')
   }
 
-  const conn = await db()
-  let convCount = 0
-  let msgCount = 0
-  // Not a real transaction (sqlx pool may swap connections between awaits),
-  // so we tolerate partial failures: if an INSERT throws, prior rows stay,
-  // and the caller can retry. Fresh UUIDs make a retry additive, not clobbery.
+  // Normalize each conversation/message, applying the same defaults the old
+  // inline INSERT did. The backend then inserts verbatim with minted UUIDs.
+  const convos: ImportConversation[] = []
   for (const c of doc.conversations) {
     if (!c || typeof c !== 'object') continue
-    const newConvId = uuid()
     const createdAt = typeof c.created_at === 'number' ? c.created_at : Date.now()
     const updatedAt = typeof c.updated_at === 'number' ? c.updated_at : createdAt
-    await conn.execute(
-      'INSERT INTO conversations (id, title, created_at, updated_at, provider_id, model, temperature, pinned, max_tokens, system_prompt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
-      [
-        newConvId,
-        typeof c.title === 'string' && c.title.length > 0 ? c.title : 'Imported conversation',
-        createdAt,
-        updatedAt,
-        c.provider_id ?? null,
-        c.model ?? null,
-        typeof c.temperature === 'number' ? c.temperature : null,
-        // pinned is optional in the export schema; treat anything truthy as 1.
-        c.pinned ? 1 : 0,
-        typeof c.max_tokens === 'number' && c.max_tokens > 0 ? c.max_tokens : null,
-        typeof c.system_prompt === 'string' && c.system_prompt.length > 0 ? c.system_prompt : null,
-      ],
-    )
-    convCount += 1
-
+    const messages: ImportMessage[] = []
     const msgs = Array.isArray(c.messages) ? c.messages : []
     for (const m of msgs) {
       if (!m || typeof m !== 'object') continue
       const role = m.role
       if (role !== 'system' && role !== 'user' && role !== 'assistant' && role !== 'tool') continue
-      const content = typeof m.content === 'string' ? m.content : ''
-      const ts = typeof m.created_at === 'number' ? m.created_at : Date.now()
-      const attachments = Array.isArray(m.attachments) && m.attachments.length > 0
-        ? JSON.stringify(m.attachments)
-        : null
-      await conn.execute(
-        'INSERT INTO messages (id, conversation_id, role, content, created_at, attachments) VALUES ($1, $2, $3, $4, $5, $6)',
-        [uuid(), newConvId, role, content, ts, attachments],
-      )
-      msgCount += 1
+      messages.push({
+        role,
+        content: typeof m.content === 'string' ? m.content : '',
+        created_at: typeof m.created_at === 'number' ? m.created_at : Date.now(),
+        attachments:
+          Array.isArray(m.attachments) && m.attachments.length > 0 ? m.attachments : null,
+      })
     }
+    convos.push({
+      title: typeof c.title === 'string' && c.title.length > 0 ? c.title : 'Imported conversation',
+      created_at: createdAt,
+      updated_at: updatedAt,
+      provider_id: c.provider_id ?? null,
+      model: c.model ?? null,
+      temperature: typeof c.temperature === 'number' ? c.temperature : null,
+      // pinned is optional in the export schema; treat anything truthy as 1.
+      pinned: c.pinned ? 1 : 0,
+      max_tokens: typeof c.max_tokens === 'number' && c.max_tokens > 0 ? c.max_tokens : null,
+      system_prompt:
+        typeof c.system_prompt === 'string' && c.system_prompt.length > 0
+          ? c.system_prompt
+          : null,
+      messages,
+    })
   }
-  return { conversations: convCount, messages: msgCount }
+  return api.importConversations(convos)
 }
