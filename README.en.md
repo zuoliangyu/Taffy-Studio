@@ -24,13 +24,45 @@ Glassmorphism UI · OpenAI / Anthropic / Gemini native protocols · streaming ·
 > and the Rust business logic now lives in a shared, platform-agnostic `taffy-core` crate so a
 > second shell (a self-hosted web server) can reuse it.
 
-## 🧭 Architecture & positioning
+## 🧭 Architecture
 
-- **Frontend**: React (one UI, reused by every shell)
-- **Core**: platform-agnostic Rust crate `taffy-core` (LLM dispatch / embeddings / DTOs; no `tauri::`, no `axum::`)
-- **Shells**: Tauri desktop & mobile (ready); web / server (axum + embedded frontend, planned)
-- **Access pattern**: desktop / mobile are native apps; (planned) browser opens a self-hosted service at `http://localhost:xxxx`
-- **Targets**: Windows, macOS, Linux desktop; iOS / Android mobile; and headless Linux servers (Docker)
+```
+              React frontend (one UI, reused by every shell)
+   ┌──────────────────────────────────────────┐
+   │  Components + state                        │
+   │  ┌────────────┐      ┌─────────────────┐  │
+   │  │ tauriApi.ts │      │    webApi.ts    │  │
+   │  │  (invoke)   │      │  (fetch / SSE)  │  │
+   │  └──────┬──────┘      └────────┬────────┘  │
+   └─────────┼──────────────────────┼───────────┘
+             │                      │
+        Tauri IPC            REST + SSE/WebSocket
+             │                      │
+   ┌─────────┴─────────┐  ┌─────────┴──────────┐
+   │     src-tauri/    │  │     taffy-web/     │
+   │ (Tauri desktop &  │  │  (Axum HTTP ·      │
+   │      mobile)      │  │      planned)      │
+   └─────────┬─────────┘  └─────────┬──────────┘
+             │                      │
+             └──────────┬───────────┘
+                        │
+              ┌─────────┴──────────┐
+              │     taffy-core     │  ← shared Rust core
+              │  llm (dispatch/SSE)│
+              │  embeddings / DTOs │
+              └─────────┬──────────┘
+                        │
+         ┌──────────────┼───────────────┐
+         │              │               │
+    LLM providers    SQLite        MCP / OS keyring
+ (OpenAI/Claude/   (convos·msgs)  (stdio tools / keyring)
+   Gemini …)
+```
+
+> The frontend switches API layers via the compile-time flag `__IS_TAURI__`
+> (Tauri `invoke` ↔ HTTP `fetch`/SSE), so component code is 100% reused.
+> Today: `taffy-core` is in place; the `tauriApi.ts` / `webApi.ts` abstraction
+> and the `taffy-web` shell are planned (see the [Roadmap](#-roadmap)).
 
 ### 📚 Companion docs
 

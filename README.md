@@ -24,13 +24,42 @@
 > Rust 业务逻辑现已抽到一个**平台无关的 `taffy-core` crate**，以便后续第二个外壳
 > （自托管 Web 服务）复用同一套核心。
 
-## 🧭 架构与定位
+## 🧭 架构
 
-- **前端**：React（一套 UI，所有外壳复用）
-- **核心**：平台无关的 Rust crate `taffy-core`（LLM 分发 / 嵌入 / DTO；不含 `tauri::`、`axum::`）
-- **外壳**：Tauri 桌面 & 移动（已就绪）；Web / 服务端（axum + 内嵌前端，规划中）
-- **访问方式**：桌面 / 移动为原生应用；（规划）浏览器访问自托管服务 `http://localhost:xxxx`
-- **适用场景**：Windows、macOS、Linux 桌面，iOS / Android 移动端，以及无桌面的 Linux 服务器（Docker）
+```
+              React 前端（一套 UI，全外壳复用）
+   ┌──────────────────────────────────────────┐
+   │  Components + 状态                         │
+   │  ┌────────────┐      ┌─────────────────┐  │
+   │  │ tauriApi.ts │      │    webApi.ts    │  │
+   │  │  (invoke)   │      │  (fetch / SSE)  │  │
+   │  └──────┬──────┘      └────────┬────────┘  │
+   └─────────┼──────────────────────┼───────────┘
+             │                      │
+        Tauri IPC            REST + SSE/WebSocket
+             │                      │
+   ┌─────────┴─────────┐  ┌─────────┴──────────┐
+   │     src-tauri/    │  │     taffy-web/     │
+   │  (Tauri 桌面/移动)│  │ (Axum HTTP · 规划) │
+   └─────────┬─────────┘  └─────────┬──────────┘
+             │                      │
+             └──────────┬───────────┘
+                        │
+              ┌─────────┴──────────┐
+              │     taffy-core     │  ← 共享 Rust 核心
+              │  llm（分发 / SSE） │
+              │  embeddings / DTO  │
+              └─────────┬──────────┘
+                        │
+         ┌──────────────┼───────────────┐
+         │              │               │
+    LLM 服务商        SQLite       MCP / 系统密钥环
+ (OpenAI/Claude/    (会话·消息)   (stdio 工具 / keyring)
+   Gemini …)
+```
+
+> 前端通过编译期变量 `__IS_TAURI__` 自动切换 API 层（Tauri `invoke` ↔ HTTP `fetch`/SSE），组件代码 100% 复用。
+> 现状：`taffy-core` 已落地；`tauriApi.ts` / `webApi.ts` 抽象层与 `taffy-web` 外壳为规划中（见[路线图](#-路线图)）。
 
 ### 📚 配套文档
 
