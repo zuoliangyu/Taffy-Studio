@@ -1,11 +1,11 @@
-// LLM provider contract — the Rust side does the actual HTTP work so we get
+// LLM provider contract — the backend does the actual HTTP work so we get
 // streaming + a place to hide API keys.
 //
-// Streaming uses tauri::ipc::Channel under the hood: typed, single-consumer,
-// no global event bus. The Rust side also keeps a cancellation registry
-// keyed by `streamId`, so we can interrupt an in-flight stream by id.
-import { Channel, invoke } from '@tauri-apps/api/core'
-import { ping as pingCmd } from './ipc'
+// This module owns the wire types; the transport lives in the backend driver
+// (`services/{tauriApi,webApi}.ts`). On the Tauri shell streaming rides a
+// typed `tauri::ipc::Channel`; on the web shell it will ride SSE. Either way
+// the cancellation registry is keyed by `streamId`.
+import { api } from '../services/api'
 
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
 
@@ -69,20 +69,20 @@ export type StreamEvent =
   | { type: 'toolCall'; id: string; serverId: string; name: string; args: string }
   | { type: 'toolResult'; id: string; name: string; result: string }
 
-/** Quick liveness check of the Rust side. */
+/** Quick liveness check of the backend. */
 export function ping(payload: string): Promise<string> {
-  return pingCmd(payload)
+  return api.ping(payload)
 }
 
 /** Non-streaming completion. */
 export function chatComplete(req: ChatRequest): Promise<ChatResponse> {
-  return invoke<ChatResponse>('chat_complete', { req })
+  return api.chatComplete(req)
 }
 
 /** Fetch the model list for a provider. Anthropic returns a curated fallback
  *  when its model endpoint is unreachable / not enabled. */
 export function listModels(req: ChatRequest): Promise<string[]> {
-  return invoke<string[]>('list_models', { req })
+  return api.listModels(req)
 }
 
 /** Handle returned by chatStream so the caller can abort. */
@@ -104,16 +104,5 @@ export function chatStream(
   req: ChatRequest,
   onEvent: (e: StreamEvent) => void,
 ): StreamHandle {
-  const id = req.streamId ?? crypto.randomUUID()
-  const ch = new Channel<StreamEvent>()
-  ch.onmessage = onEvent
-  const promise = invoke<void>('chat_stream', {
-    req: { ...req, streamId: id },
-    onEvent: ch,
-  })
-  return {
-    id,
-    promise,
-    cancel: () => invoke<boolean>('cancel_stream', { id }).then(() => void 0),
-  }
+  return api.chatStream(req, onEvent)
 }

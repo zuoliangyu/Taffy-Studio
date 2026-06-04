@@ -59,7 +59,7 @@
 ```
 
 > 前端通过编译期变量 `__IS_TAURI__` 自动切换 API 层（Tauri `invoke` ↔ HTTP `fetch`/SSE），组件代码 100% 复用。
-> 现状：`taffy-core` 已落地；`tauriApi.ts` / `webApi.ts` 抽象层与 `taffy-web` 外壳为规划中（见[路线图](#-路线图)）。
+> 现状：`taffy-core` 与前端 `api` 抽象层（`tauriApi.ts` 实现）已落地；`webApi.ts` 目前为占位、`taffy-web` 外壳规划中（见[路线图](#-路线图)）。
 
 ### 📚 配套文档
 
@@ -266,7 +266,8 @@ app/
 - [x] **MCP 客户端** —— stdio 服务器、工具注册表、agentic 工具调用循环（OpenAI + Anthropic）
 - [x] **知识库 / RAG** —— 本地向量库（暴力余弦）、按会话注入检索
 - [x] **共享 Rust 核心** —— 把平台无关逻辑（LLM / 嵌入 / DTO）拆出到 `crates/taffy-core`
-- [ ] **自托管 Web 服务**（Docker）—— 在共享核心之上做第二个外壳（axum + 内嵌前端），浏览器访问
+- [x] **前端后端抽象层** —— `services/api.ts` + `tauriApi.ts`（`webApi.ts` 占位），UI 与传输彻底解耦
+- [ ] **自托管 Web 服务**（Docker）—— 在共享核心之上做第二个外壳（axum + 内嵌前端 + `webApi.ts` 实现），浏览器访问
 - [ ] 流式 Markdown 稳定性（表格/代码半渲染时不闪烁）
 - [ ] agentic 工具调用循环内的逐 token 流式（目前是按轮）
 - [ ] 移动端密钥存储用 Stronghold / Android Keystore / iOS Keychain

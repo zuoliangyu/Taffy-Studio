@@ -1,7 +1,7 @@
 // MCP client — frontend half. Server *configs* are persisted in the Store; the
 // live *connections* live in Rust (see src-tauri/src/mcp.rs). This module wraps
 // the invoke() surface and the config persistence.
-import { invoke } from '@tauri-apps/api/core'
+import { api } from '../services/api'
 import { getSetting, setSetting } from './store'
 
 export interface McpServerConfig {
@@ -45,16 +45,16 @@ export async function saveMcpServers(servers: McpServerConfig[]): Promise<void> 
 
 /** Spawn + handshake a server, returning its tool list. */
 export function mcpConnect(config: McpServerConfig): Promise<McpTool[]> {
-  return invoke<McpTool[]>('mcp_connect', { config })
+  return api.mcpConnect(config)
 }
 
 export function mcpDisconnect(id: string): Promise<void> {
-  return invoke<void>('mcp_disconnect', { id })
+  return api.mcpDisconnect(id)
 }
 
 /** All tools across all currently-connected servers. */
 export function mcpListTools(): Promise<McpTool[]> {
-  return invoke<McpTool[]>('mcp_list_tools')
+  return api.mcpListTools()
 }
 
 export function mcpCallTool(
@@ -62,7 +62,7 @@ export function mcpCallTool(
   name: string,
   args: unknown,
 ): Promise<string> {
-  return invoke<string>('mcp_call_tool', { serverId, name, args })
+  return api.mcpCallTool(serverId, name, args)
 }
 
 /** Convert connected tools into the ToolSpec[] a ChatRequest carries. */

@@ -1,6 +1,6 @@
-// Wrappers around the storage_* Rust commands.
-// One place to keep the surface area honest as the schema evolves.
-import { invoke } from '@tauri-apps/api/core'
+// Wrappers around the storage backend surface. The transport lives in
+// `services/{tauriApi,webApi}.ts`; this module owns the types + stable names.
+import { api } from '../services/api'
 
 export interface BackupInfo {
   path: string
@@ -17,17 +17,17 @@ export interface StorageInfo {
 }
 
 export function storageInfo(): Promise<StorageInfo> {
-  return invoke<StorageInfo>('storage_info')
+  return api.storageInfo()
 }
 
 export function backupNow(): Promise<BackupInfo> {
-  return invoke<BackupInfo>('backup_now')
+  return api.backupNow()
 }
 
 export function resetDatabase(): Promise<void> {
-  return invoke<void>('reset_database')
+  return api.resetDatabase()
 }
 
 export function openConfigDir(): Promise<void> {
-  return invoke<void>('open_config_dir')
+  return api.openConfigDir()
 }

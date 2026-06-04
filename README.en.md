@@ -61,8 +61,9 @@ Glassmorphism UI · OpenAI / Anthropic / Gemini native protocols · streaming ·
 
 > The frontend switches API layers via the compile-time flag `__IS_TAURI__`
 > (Tauri `invoke` ↔ HTTP `fetch`/SSE), so component code is 100% reused.
-> Today: `taffy-core` is in place; the `tauriApi.ts` / `webApi.ts` abstraction
-> and the `taffy-web` shell are planned (see the [Roadmap](#-roadmap)).
+> Today: `taffy-core` and the frontend `api` abstraction (`tauriApi.ts` impl)
+> are in place; `webApi.ts` is a stub and the `taffy-web` shell is planned
+> (see the [Roadmap](#-roadmap)).
 
 ### 📚 Companion docs
 
@@ -269,7 +270,8 @@ Tracked in [`MIGRATION.md`](./MIGRATION.md). High level:
 - [x] **MCP client** — stdio servers, tool registry, agentic tool-use loop (OpenAI + Anthropic)
 - [x] **Knowledge base / RAG** — local vector store (brute-force cosine), per-conversation retrieval injection
 - [x] **Shared Rust core** — platform-agnostic `crates/taffy-core` (LLM / embeddings / DTOs) split out of the Tauri shell
-- [ ] **Self-hosted web server** (Docker) — a second shell (axum + embedded frontend) over the shared core, browser-accessed
+- [x] **Frontend backend abstraction** — `services/api.ts` + `tauriApi.ts` (`webApi.ts` stub); UI fully decoupled from transport
+- [ ] **Self-hosted web server** (Docker) — a second shell (axum + embedded frontend + `webApi.ts` impl) over the shared core, browser-accessed
 - [ ] Streaming markdown stability (no flicker on half-rendered tables/code)
 - [ ] Token-by-token streaming during the agentic tool-use loop (currently per-round)
 - [ ] Stronghold / Android Keystore / iOS Keychain for mobile secret storage

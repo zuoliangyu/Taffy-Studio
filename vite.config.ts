@@ -7,6 +7,13 @@ const host = process.env.TAURI_DEV_HOST
 export default defineConfig({
   plugins: [react()],
 
+  // Compile-time shell flag. The Tauri CLI sets TAURI_ENV_PLATFORM when it
+  // drives the frontend build/dev; a plain `vite build` (web shell) leaves it
+  // unset. `services/api.ts` switches its backend driver on this.
+  define: {
+    __IS_TAURI__: JSON.stringify(!!process.env.TAURI_ENV_PLATFORM),
+  },
+
   // Tauri expects a fixed port and fails if it can't claim it.
   clearScreen: false,
   server: {

@@ -1,11 +1,11 @@
 // Local RAG — knowledge bases + brute-force vector retrieval.
 //
 // Storage: SQLite (migration v8) holds `knowledge_bases` and `knowledge_chunks`
-// with embeddings as a JSON float array in TEXT. Embeddings are computed in
-// Rust (`embed_texts`, keeps the key out of the webview). Search loads a KB's
+// with embeddings as a JSON float array in TEXT. Embeddings are computed by the
+// backend (`embedTexts`, keeps the key out of the webview). Search loads a KB's
 // chunks and ranks them by cosine in JS — fine at local-app scale (thousands of
 // chunks), and it avoids a native sqlite-vec extension dependency.
-import { invoke } from '@tauri-apps/api/core'
+import { api } from '../services/api'
 import { getDb, uuid } from './db'
 import { getProvider, readApiKey, type AppSettings } from './settings'
 
@@ -46,7 +46,7 @@ interface EmbedRequest {
 }
 
 function embedTexts(req: EmbedRequest): Promise<number[][]> {
-  return invoke<number[][]>('embed_texts', { req })
+  return api.embedTexts(req)
 }
 
 /** Resolve the embedding HTTP target for a KB from app settings. */

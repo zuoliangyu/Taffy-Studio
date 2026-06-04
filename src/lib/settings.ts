@@ -13,7 +13,7 @@
 //   - If we see the old v1 `providerConfig` blob in Store, we migrate it into
 //     a single ProviderEntry + move the legacy `apiKey` keyring slot to the
 //     new per-provider slot. Migration runs lazily on first loadSettings().
-import { invoke } from '@tauri-apps/api/core'
+import { api } from '../services/api'
 import type { ModelCapabilityOverride } from './capabilities'
 import { deleteSetting, getSetting, setSetting } from './store'
 import { defaultTemplates, type AssistantTemplate } from './templates'
@@ -116,7 +116,7 @@ let _secretSupported: boolean | null = null
 async function secretSupported(): Promise<boolean> {
   if (_secretSupported !== null) return _secretSupported
   try {
-    _secretSupported = await invoke<boolean>('secret_supported')
+    _secretSupported = await api.secretSupported()
   } catch {
     _secretSupported = false
   }
@@ -127,7 +127,7 @@ export async function readApiKey(providerId: string): Promise<string> {
   const slot = apiKeySlot(providerId)
   if (await secretSupported()) {
     try {
-      const v = await invoke<string | null>('secret_get', { key: slot })
+      const v = await api.secretGet(slot)
       if (v != null) return v
     } catch (e) {
       console.warn('secret_get failed:', e)
@@ -141,7 +141,7 @@ export async function writeApiKey(providerId: string, value: string): Promise<vo
   const slot = apiKeySlot(providerId)
   if (await secretSupported()) {
     try {
-      await invoke('secret_set', { key: slot, value })
+      await api.secretSet(slot, value)
       await deleteSetting(`secret:${slot}`).catch(() => {})
       return
     } catch (e) {
@@ -155,7 +155,7 @@ export async function deleteApiKey(providerId: string): Promise<void> {
   const slot = apiKeySlot(providerId)
   if (await secretSupported()) {
     try {
-      await invoke('secret_delete', { key: slot })
+      await api.secretDelete(slot)
     } catch {
       /* ignore */
     }
@@ -208,10 +208,10 @@ async function migrateFromLegacy(old: LegacyProviderConfig): Promise<AppSettings
   // per-provider name.
   try {
     if (await secretSupported()) {
-      const old_key = await invoke<string | null>('secret_get', { key: 'apiKey' })
+      const old_key = await api.secretGet('apiKey')
       if (old_key) {
-        await invoke('secret_set', { key: apiKeySlot(provider.id), value: old_key })
-        await invoke('secret_delete', { key: 'apiKey' })
+        await api.secretSet(apiKeySlot(provider.id), old_key)
+        await api.secretDelete('apiKey')
       }
     } else if (old.apiKey) {
       // v1 may have been storing the key inline (very early dev). Move it.
