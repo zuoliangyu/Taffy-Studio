@@ -1,0 +1,19 @@
+# taffy-core — platform-agnostic business logic shared by every shell
+# (Tauri desktop/mobile today; the axum web server later). No `tauri::` or
+# `axum::` types may appear in this crate's public API — that's what lets both
+# shells depend on it.
+[package]
+name = "taffy-core"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# rustls so we don't depend on system OpenSSL (matters on Android/Alpine).
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+  "http2",
+] }

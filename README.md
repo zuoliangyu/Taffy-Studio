@@ -4,9 +4,9 @@
 
 # Taffy Studio
 
-**A cross-platform LLM chat client built on Tauri 2.**
+**基于 Tauri 2 的跨平台大模型聊天客户端。**
 
-Glassmorphism UI · OpenAI / Anthropic / Gemini native protocols · streaming · OS-keyring secret storage · Markdown + KaTeX + Mermaid · Windows / macOS / Linux / iOS / Android.
+玻璃拟态 UI · OpenAI / Anthropic / Gemini 原生协议 · 流式输出 · 系统密钥环存密钥 · Markdown + KaTeX + Mermaid · Windows / macOS / Linux / iOS / Android。
 
 [![CI](https://github.com/your-org/taffy-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/taffy-studio/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -14,246 +14,260 @@ Glassmorphism UI · OpenAI / Anthropic / Gemini native protocols · streaming ·
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
 [![Rust](https://img.shields.io/badge/Rust-stable-orange?logo=rust)](https://www.rust-lang.org/)
 
+[English](./README.en.md) · **简体中文**
+
 </div>
 
 > [!NOTE]
-> **Status: early — usable on desktop, mobile builds work but UI polish for touch is ongoing.**
-> The skeleton (Tauri 2 + React + SQLite + streaming + multi-provider + OS keyring) is in place.
-> See **[`docs/ROADMAP.md`](./docs/ROADMAP.md)** for the full shipped / pending list, design decisions, and known limitations.
+> **状态：早期 —— 桌面端可用，移动端能构建，触屏 UI 仍在打磨。**
+> 骨架（Tauri 2 + React + SQLite + 流式 + 多服务商 + 系统密钥环）已就位；
+> Rust 业务逻辑现已抽到一个**平台无关的 `taffy-core` crate**，以便后续第二个外壳
+> （自托管 Web 服务）复用同一套核心。
 
-### 📚 Companion docs
+### 📚 配套文档
 
-- [`docs/ROADMAP.md`](./docs/ROADMAP.md) — shipped features, backlog, known limitations
-- [`docs/TODO.md`](./docs/TODO.md) — checklist version of the unfinished backlog, pick any item
-- [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md) — DB migration rules for contributors
-- [`docs/UPDATER.md`](./docs/UPDATER.md) — auto-update signing keys, manifest, hosting, rotation
-- [`MIGRATION.md`](./MIGRATION.md) — Cherry Studio → this skeleton porting plan
-- [`DOCKER.md`](./DOCKER.md) — Docker-based Linux + Android builds
-
----
-
-## ✨ Features
-
-- 🌐 **Five platforms, one codebase** — Windows, macOS, Linux, iOS, Android (Tauri 2).
-- 🚀 **Streaming first** — token-by-token via `tauri::ipc::Channel`; stop / regenerate built-in.
-- 🤖 **Multi-provider, native protocols** — OpenAI-compatible (OpenAI / DeepSeek / SiliconFlow / Ollama / any base URL), **Anthropic** (`/v1/messages`), **Gemini** (`streamGenerateContent`). API keys live in the **OS keyring** (Win Credential / macOS Keychain / libsecret).
-- 📝 **Rich rendering** — GitHub Flavored Markdown, syntax-highlighted code blocks with copy button, KaTeX math (`$inline$` / `$$block$$`), Mermaid diagrams (lazy-loaded).
-- 💾 **Local-first** — conversations + messages persisted to SQLite via `tauri-plugin-sql`.
-- 🎨 **Glassmorphism UI** — HSL token system, blue-gray glass surfaces, radial-gradient backdrop, auto dark mode.
-- 📱 **Responsive** — desktop sidebar collapses to a drawer below 760px; safe-area insets on iOS/Android.
-- 🔐 **Sideload-friendly** — no app store dependency; updater plugin pre-configured for self-hosted releases.
-
-## 📸 Screenshots
-
-> _Add screenshots here once UI stabilizes._
-> `docs/screenshots/desktop-light.png`, `docs/screenshots/desktop-dark.png`, `docs/screenshots/mobile.png`
+- [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md) —— 数据库迁移规则（贡献者须读）
+- [`docs/UPDATER.md`](./docs/UPDATER.md) —— 自动更新的签名密钥、清单、托管与轮换
+- [`MIGRATION.md`](./MIGRATION.md) —— Cherry Studio → 本骨架的移植计划
+- [`DOCKER.md`](./DOCKER.md) —— 基于 Docker 的 Linux + Android 构建
 
 ---
 
-## 🚀 Quick Start
+## ✨ 特性
+
+- 🌐 **一套代码，五端** —— Windows、macOS、Linux、iOS、Android（Tauri 2）。
+- 🧩 **共享 Rust 核心** —— 业务逻辑（LLM 分发、嵌入、DTO）集中在平台无关的 `taffy-core` crate；Tauri 外壳只是薄封装，Web/服务端外壳也能复用同一核心。
+- 🚀 **流式优先** —— 通过 `tauri::ipc::Channel` 逐 token 推送；内置停止 / 重新生成。
+- 🤖 **多服务商 · 原生协议** —— OpenAI 兼容（OpenAI / DeepSeek / SiliconFlow / Ollama / 任意 base URL）、**Anthropic**（`/v1/messages`）、**Gemini**（`streamGenerateContent`）。API 密钥存于**系统密钥环**（Win 凭据管理器 / macOS 钥匙串 / libsecret）。
+- 📝 **富文本渲染** —— GitHub 风味 Markdown、带复制按钮的代码高亮、KaTeX 公式（`$行内$` / `$$块级$$`）、Mermaid 图表（懒加载）。
+- 💾 **本地优先** —— 会话与消息通过 `tauri-plugin-sql` 持久化到 SQLite。
+- 🎨 **玻璃拟态 UI** —— HSL 颜色令牌体系、蓝灰玻璃质感、径向渐变背景、自动深色模式。
+- 📱 **响应式** —— 桌面侧栏在 760px 以下折叠为抽屉；iOS/Android 适配安全区。
+- 🔐 **便于侧载** —— 不依赖应用商店；更新插件已为自托管发布预配置。
+
+## 📸 截图
+
+> _UI 稳定后在此补充截图。_
+> `docs/screenshots/desktop-light.png`、`docs/screenshots/desktop-dark.png`、`docs/screenshots/mobile.png`
+
+---
+
+## 🚀 快速开始
 
 ```bash
 git clone https://github.com/your-org/taffy-studio.git
 cd taffy-studio
 pnpm install
-pnpm tauri:dev      # first run compiles ~400 Rust crates (5–10 min)
+pnpm tauri:dev      # 首次运行会编译约 400 个 Rust crate（5–10 分钟）
 ```
 
-Open Settings (⚙ in the top-right), pick a provider preset (OpenAI / Anthropic / Gemini / DeepSeek / SiliconFlow / Ollama), paste your API key, then chat.
+打开「设置」（右上角 ⚙），选一个服务商预设（OpenAI / Anthropic / Gemini / DeepSeek / SiliconFlow / Ollama），粘贴你的 API 密钥，即可开聊。
 
-## ⚙️ Prerequisites
+## ⚙️ 前置条件
 
-| Tool | Why |
-|------|-----|
-| Node ≥ 18 + **pnpm** | Frontend tooling |
-| **Rust** (stable via [rustup](https://rustup.rs)) | Tauri core |
-| OS toolchain | See below |
+| 工具 | 用途 |
+|------|------|
+| Node ≥ 18 + **pnpm** | 前端工具链 |
+| **Rust**（用 [rustup](https://rustup.rs) 装 stable） | Tauri 核心 |
+| 各系统工具链 | 见下 |
 
-Per-OS:
-- **Windows** — MSVC Build Tools + WebView2 (Win11 ships with it)
-- **macOS** — `xcode-select --install`
-- **Linux** — `libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev librsvg2-dev libxdo-dev libayatana-appindicator3-dev patchelf`
-- **Android** — Android Studio + NDK + `ANDROID_HOME` + `NDK_HOME`
-- **iOS** — Xcode + Apple ID (free tier works for sideload)
+按系统：
+- **Windows** —— MSVC Build Tools + WebView2（Win11 自带）
+- **macOS** —— `xcode-select --install`
+- **Linux** —— `libwebkit2gtk-4.1-dev libssl-dev libgtk-3-dev librsvg2-dev libxdo-dev libayatana-appindicator3-dev patchelf`
+- **Android** —— Android Studio + NDK + `ANDROID_HOME` + `NDK_HOME`
+- **iOS** —— Xcode + Apple ID（免费档即可侧载）
 
-Full setup: <https://v2.tauri.app/start/prerequisites/>
+完整配置：<https://v2.tauri.app/start/prerequisites/>
 
 ---
 
-## 🛠 Scripts
+## 🛠 脚本
 
-### Windows host
+### Windows 主机
 
 ```powershell
-# Dev (hot-reload, local machine)
-.\scripts\dev.ps1                  # desktop window         [default]
-.\scripts\dev.ps1 android          # emulator / USB device
+# 开发（热重载，本机）
+.\scripts\dev.ps1                  # 桌面窗口               [默认]
+.\scripts\dev.ps1 android          # 模拟器 / USB 真机
 
-# Build release
-.\scripts\build.ps1 windows        # native — fastest       [default]
+# 构建发行包
+.\scripts\build.ps1 windows        # 本机原生 —— 最快      [默认]
 .\scripts\build.ps1 linux          # Docker → dist-linux/{*.deb,*.AppImage}
 .\scripts\build.ps1 android        # Docker → dist-android/*.apk
 .\scripts\build.ps1 all            # windows + linux + android
 
-# Local CI (run all checks before pushing)
+# 本地 CI（推送前跑全部检查）
 .\scripts\ci-local.ps1
 ```
 
-### macOS host
+### macOS 主机
 
 ```bash
-./scripts/dev-mac.sh               # desktop
+./scripts/dev-mac.sh               # 桌面
 ./scripts/dev-mac.sh ios
 ./scripts/dev-mac.sh android
 
-./scripts/build-mac.sh             # .app + .dmg            [default]
-./scripts/build-mac.sh ios         # .ipa (sideload)
+./scripts/build-mac.sh             # .app + .dmg           [默认]
+./scripts/build-mac.sh ios         # .ipa（侧载）
 ./scripts/build-mac.sh all         # mac + ios + android + linux
 
 ./scripts/ci-local.sh
 ```
 
-All scripts run a preflight (Node ≥ 18, pnpm, Rust, plus toolchain checks per target) and fail loud with concrete install hints if something is missing.
+所有脚本都会做预检（Node ≥ 18、pnpm、Rust，以及各目标的工具链检查），缺什么会直接报错并给出具体安装提示。
 
 ---
 
-## ✅ Pre-push verification: local CI
+## ✅ 推送前自检：本地 CI
 
-Run the **exact same checks** GitHub Actions runs, locally in Docker — catches regressions before you push:
+在本地 Docker 里跑与 GitHub Actions **完全相同**的检查 —— 推送前先抓回归：
 
 ```powershell
 .\scripts\ci-local.ps1
 ```
 
-Mirrors [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
+对应 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：
 
 1. `pnpm install --frozen-lockfile`
-2. `pnpm exec tsc -b`       (frontend typecheck)
-3. `pnpm build`              (vite production build)
+2. `pnpm exec tsc -b`       （前端类型检查）
+3. `pnpm build`              （vite 生产构建）
 4. `cargo fmt --all -- --check`
 5. `cargo clippy --all-targets -- -D warnings`
 6. `cargo check --all-targets`
 
-First run ≈ 5–10 min (builds image + caches). Subsequent runs ≈ 2–3 min (cached node_modules + cargo registry).
+首次约 5–10 分钟（构建镜像 + 缓存）。后续约 2–3 分钟（复用 node_modules + cargo registry 缓存）。
 
 ```powershell
-.\scripts\ci-local.ps1 -Reset       # wipe cached volumes if lockfile changes cause weirdness
-.\scripts\ci-local.ps1 -NoCache     # rebuild the CI image from scratch
+.\scripts\ci-local.ps1 -Reset       # 若 lockfile 变动导致诡异问题，清掉缓存卷
+.\scripts\ci-local.ps1 -NoCache     # 从头重建 CI 镜像
 ```
 
 ---
 
-## 🧱 Tech Stack
+## 🧱 技术栈
 
-| Layer | What |
-|-------|------|
-| Shell | [Tauri 2](https://v2.tauri.app/) (Rust core + system webview) |
-| Frontend | React 18 + TypeScript 5 + Vite 5 |
+| 层 | 内容 |
+|-----|------|
+| 核心 | **`crates/taffy-core`** —— 平台无关的 Rust（LLM 分发、嵌入、DTO），所有外壳共享 |
+| 外壳 | [Tauri 2](https://v2.tauri.app/)（Rust 核心 + 系统 webview）；Web/服务端外壳规划中 |
+| 前端 | React 18 + TypeScript 5 + Vite 5 |
 | Markdown | `react-markdown` + `remark-gfm` + `react-syntax-highlighter` + `rehype-katex` + `mermaid` |
-| Database | SQLite via `tauri-plugin-sql` (sqlx under the hood) |
-| Secrets | `keyring` crate (desktop) + Store fallback (mobile) |
-| HTTP / SSE | `reqwest` (rustls — no system OpenSSL dep, mobile-friendly) + custom SSE parser |
-| Build | pnpm + Cargo + Docker (Linux / Android cross-build from Windows) |
-| CI | GitHub Actions: typecheck + clippy + matrix desktop builds on tag |
+| 数据库 | SQLite，经 `tauri-plugin-sql`（底层 sqlx） |
+| 密钥 | `keyring` crate（桌面）+ Store 降级（移动端） |
+| HTTP / SSE | `reqwest`（rustls —— 不依赖系统 OpenSSL，对移动端友好）+ 自研 SSE 解析 |
+| 构建 | pnpm + Cargo workspace + Docker（在 Windows 上交叉构建 Linux / Android） |
+| CI | GitHub Actions：类型检查 + clippy + 打 tag 时矩阵构建桌面端 |
 
-## 📂 Project Layout
+## 📂 项目结构
 
 ```
 app/
-├─ index.html                        # Vite entry
-├─ src/
-│  ├─ main.tsx                       # React boot
-│  ├─ App.tsx                        # Layout (topbar + sidebar + main)
-│  ├─ App.css                        # EK-OmniProbe-style design tokens + glass surfaces
+├─ Cargo.toml                        # Cargo WORKSPACE 根（src-tauri + crates/*）
+├─ index.html                        # Vite 入口
+├─ src/                              # React 前端（所有外壳共用一套 UI）
+│  ├─ main.tsx                       # React 启动
+│  ├─ App.tsx                        # 布局（顶栏 + 侧栏 + 主区）
+│  ├─ App.css                        # EK-OmniProbe 风格设计令牌 + 玻璃质感
 │  ├─ components/
-│  │  ├─ ChatPanel.tsx               # Messages + composer + Stop/Regenerate
+│  │  ├─ ChatPanel.tsx               # 消息 + 输入框 + 停止/重新生成
 │  │  ├─ MessageContent.tsx          # Markdown + KaTeX + Mermaid
-│  │  └─ SettingsPanel.tsx           # Provider config + keyring-backed API key
+│  │  └─ SettingsPanel.tsx           # 服务商配置 + 密钥环存储的 API 密钥
 │  └─ lib/
-│     ├─ ipc.ts                      # All invoke() calls go through here
-│     ├─ db.ts                       # SQLite via plugin-sql
-│     ├─ store.ts                    # Persistent KV (plugin-store)
-│     ├─ settings.ts                 # Typed config + keyring migration
-│     └─ llm.ts                      # ChatRequest / chatStream contract
-├─ src-tauri/
+│     ├─ ipc.ts                      # 所有 invoke() 调用都走这里
+│     ├─ db.ts                       # SQLite（plugin-sql）
+│     ├─ store.ts                    # 持久化 KV（plugin-store）
+│     ├─ settings.ts                 # 类型化配置 + 密钥环迁移
+│     └─ llm.ts                      # ChatRequest / chatStream 契约
+├─ crates/
+│  └─ taffy-core/                    # ★ 平台无关核心 —— 不含 tauri:: / axum::
+│     └─ src/
+│        ├─ lib.rs                   # 重新导出
+│        └─ llm.rs                   # 服务商分发、SSE、list_models / chat_complete / embed_texts
+├─ src-tauri/                        # Tauri 桌面/移动外壳（薄；委托给 taffy-core）
 │  ├─ src/
-│  │  ├─ main.rs                     # Desktop entry
-│  │  └─ lib.rs                      # Shared entry, commands, provider dispatch
+│  │  ├─ main.rs                     # 桌面入口
+│  │  ├─ lib.rs                      # Tauri 命令 + 流式/agentic 循环 + 存储
+│  │  └─ mcp.rs                      # MCP stdio 客户端
 │  ├─ Cargo.toml
 │  ├─ tauri.conf.json
-│  └─ capabilities/                  # Plugin permission grants
-├─ docker/                           # Cross-platform build images
-│  ├─ ci.Dockerfile                  # Local CI verification
+│  └─ capabilities/                  # 插件权限授予
+├─ docker/                           # 跨平台「构建」镜像（不是运行时服务器）
+│  ├─ ci.Dockerfile                  # 本地 CI 校验
 │  ├─ linux.Dockerfile               # Linux deb + AppImage
 │  └─ android.Dockerfile             # Android APK
-├─ scripts/                          # dev / build / ci-local for Win + Mac
+├─ scripts/                          # Win + Mac 的 dev / build / ci-local
 ├─ .github/workflows/                # ci.yml + release.yml
-├─ DOCKER.md                         # Docker build details
-├─ MIGRATION.md                      # Cherry Studio porting plan
-└─ README.md                         # You are here
+├─ DOCKER.md                         # Docker 构建说明
+├─ MIGRATION.md                      # Cherry Studio 移植计划
+├─ README.md                         # 你在这里（简体中文，默认）
+└─ README.en.md                      # English
 ```
 
 ---
 
-## 🗺 Roadmap
+## 🗺 路线图
 
-Tracked in [`MIGRATION.md`](./MIGRATION.md). High level:
+详见 [`MIGRATION.md`](./MIGRATION.md)。概览：
 
-- [x] Tauri 2 skeleton (Windows/Mac/Linux/iOS/Android)
-- [x] SQLite persistence + multi-conversation
-- [x] OpenAI-compatible streaming + Anthropic + Gemini native protocols
-- [x] Stop / Regenerate
-- [x] Markdown + code highlight + KaTeX + Mermaid
-- [x] OS keyring for API keys (desktop)
-- [x] Responsive sidebar (drawer < 760px)
-- [x] EK-OmniProbe-style glassmorphism UI
-- [x] Local + GitHub Actions CI
-- [x] Auto-fetch model lists per provider
-- [x] Conversation title auto-summary
-- [x] Bundle splitting (per-vendor chunks; pdf.js / tesseract lazy-loaded)
-- [x] **i18n** — English + 简体中文, OS-detected + user-switchable
-- [x] **Theme control** — System / Light / Dark (overrides the OS media query)
-- [x] **File attachments** — images (vision) + PDF / text documents (client-side text extraction spliced into the prompt)
-- [x] **OCR** — Tesseract.js fallback for images on non-vision models
-- [x] **MCP client** — stdio servers, tool registry, agentic tool-use loop (OpenAI + Anthropic)
-- [x] **Knowledge base / RAG** — local vector store (brute-force cosine), per-conversation retrieval injection
-- [ ] Streaming markdown stability (no flicker on half-rendered tables/code)
-- [ ] Token-by-token streaming during the agentic tool-use loop (currently per-round)
-- [ ] Stronghold / Android Keystore / iOS Keychain for mobile secret storage
+- [x] Tauri 2 骨架（Windows/Mac/Linux/iOS/Android）
+- [x] SQLite 持久化 + 多会话
+- [x] OpenAI 兼容流式 + Anthropic + Gemini 原生协议
+- [x] 停止 / 重新生成
+- [x] Markdown + 代码高亮 + KaTeX + Mermaid
+- [x] 桌面端 API 密钥存系统密钥环
+- [x] 响应式侧栏（< 760px 变抽屉）
+- [x] EK-OmniProbe 风格玻璃拟态 UI
+- [x] 本地 + GitHub Actions CI
+- [x] 按服务商自动拉取模型列表
+- [x] 会话标题自动摘要
+- [x] 分包（按 vendor 切块；pdf.js / tesseract 懒加载）
+- [x] **国际化** —— 英文 + 简体中文，自动识别系统语言 + 可手动切换
+- [x] **主题控制** —— 跟随系统 / 浅色 / 深色（覆盖系统媒体查询）
+- [x] **文件附件** —— 图片（视觉）+ PDF / 文本文档（客户端抽取文本拼进 prompt）
+- [x] **OCR** —— 非视觉模型下用 Tesseract.js 兜底识图
+- [x] **MCP 客户端** —— stdio 服务器、工具注册表、agentic 工具调用循环（OpenAI + Anthropic）
+- [x] **知识库 / RAG** —— 本地向量库（暴力余弦）、按会话注入检索
+- [x] **共享 Rust 核心** —— 把平台无关逻辑（LLM / 嵌入 / DTO）拆出到 `crates/taffy-core`
+- [ ] **自托管 Web 服务**（Docker）—— 在共享核心之上做第二个外壳（axum + 内嵌前端），浏览器访问
+- [ ] 流式 Markdown 稳定性（表格/代码半渲染时不闪烁）
+- [ ] agentic 工具调用循环内的逐 token 流式（目前是按轮）
+- [ ] 移动端密钥存储用 Stronghold / Android Keystore / iOS Keychain
 
-## 🤝 Contributing
+## 🤝 贡献
 
-PRs welcome. Before pushing:
+欢迎 PR。推送前：
 
 ```powershell
-.\scripts\ci-local.ps1    # or .\scripts\ci-local.sh on Mac/Linux
+.\scripts\ci-local.ps1    # Mac/Linux 用 .\scripts\ci-local.sh
 ```
 
-Conventions:
-- TypeScript strict on (`tsc -b` must pass).
-- Rust: `cargo fmt`, `cargo clippy -- -D warnings`.
-- Commit messages: short imperative subject; `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` prefix encouraged but not required.
-- All JS → Rust calls go through `src/lib/ipc.ts` (no inline `invoke()` in components).
+约定：
+- TypeScript 严格模式（`tsc -b` 必须通过）。
+- Rust：`cargo fmt`、`cargo clippy -- -D warnings`。
+- 提交信息：简短祈使句主题；鼓励但不强制 `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` 前缀。
+- 所有 JS → Rust 调用都走 `src/lib/ipc.ts`（组件里不要内联 `invoke()`）。
+- 业务逻辑放进 `crates/taffy-core`（那里不出现 `tauri::` 类型），以便将来外壳复用。
 
-Issues & discussion: open one on GitHub. For larger architectural changes, start a discussion first.
+Issue 与讨论：在 GitHub 开。较大的架构改动请先开个 discussion。
 
-## 🙏 Acknowledgments
+## 🙏 致谢
 
-Taffy Studio draws design and architectural inspiration from:
+Taffy Studio 的设计与架构受以下项目启发：
 
-- **[Cherry Studio](https://github.com/CherryHQ/cherry-studio)** — AI workstation feature inventory (AGPL-3.0).
-- **[Kelivo](https://github.com/Chevey339/kelivo)** — Flutter LLM client, mobile UX reference.
-- **[EK-OmniProbe](#)** — glassmorphism UI design language ported to chat.
-- **[Tauri](https://v2.tauri.app/)** — the shell that makes 5-platform deployment realistic.
+- **[Cherry Studio](https://github.com/CherryHQ/cherry-studio)** —— AI 工作站功能清单（AGPL-3.0）。
+- **[Kelivo](https://github.com/Chevey339/kelivo)** —— Flutter 大模型客户端，移动端 UX 参考。
+- **[EK-OmniProbe](#)** —— 移植到聊天界面的玻璃拟态设计语言。
+- **[Tauri](https://v2.tauri.app/)** —— 让五端部署变得现实的外壳。
 
-> Source code in this repo is original; the projects above are listed because their public ideas, file layouts, or visual languages informed decisions here.
+> 本仓库源码均为原创；上述项目仅作致谢 —— 它们公开的思路、文件结构或视觉语言为这里的取舍提供了参考。
 
-## 📄 License
+## 📄 许可
 
 [MIT](./LICENSE) © 2026 zuolan
 
 ---
 
 <div align="center">
-<sub>Built with <a href="https://v2.tauri.app/">Tauri 2</a> · <a href="https://react.dev/">React</a> · <a href="https://www.rust-lang.org/">Rust</a></sub>
+<sub>由 <a href="https://v2.tauri.app/">Tauri 2</a> · <a href="https://react.dev/">React</a> · <a href="https://www.rust-lang.org/">Rust</a> 构建</sub>
 </div>

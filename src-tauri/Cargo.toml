@@ -16,6 +16,10 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Platform-agnostic core (LLM dispatch, embeddings, DTOs). Shared with the
+# future web shell so the logic is written once.
+taffy-core = { path = "../crates/taffy-core" }
+
 tauri = { version = "2", features = [] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"

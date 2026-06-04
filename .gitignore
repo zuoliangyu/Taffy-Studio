@@ -14,7 +14,10 @@ dist-ssr/
 node_modules/.tmp/
 
 # Tauri Rust target — large, regenerated per machine.
-# NOTE: src-tauri/Cargo.lock IS committed (this is an app, not a library).
+# NOTE: Cargo.lock IS committed (this is an app, not a library).
+# With the Cargo workspace, the build dir is the workspace-root ./target;
+# the legacy src-tauri/target/ path is kept for older checkouts.
+target/
 src-tauri/target/
 
 # Tauri generated mobile projects (Android/iOS scaffolding produced by

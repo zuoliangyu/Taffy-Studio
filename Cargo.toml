@@ -1,0 +1,12 @@
+# Cargo workspace root.
+#
+# Members:
+#   src-tauri          — Tauri desktop/mobile shell (thin; delegates to taffy-core)
+#   crates/taffy-core  — platform-agnostic core logic (LLM dispatch, embeddings, …)
+#
+# A second shell — crates/taffy-web (axum HTTP server for self-hosted / Docker) —
+# will join this list in a later milestone. Both shells depend on taffy-core so
+# the business logic is written once. See docs/internal/MULTI-PLATFORM-ARCHITECTURE.md.
+[workspace]
+members = ["src-tauri", "crates/taffy-core"]
+resolver = "2"
