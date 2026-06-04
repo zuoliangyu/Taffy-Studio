@@ -120,6 +120,22 @@ RUN=1 ./scripts/build-web.sh
 
 > 当前 Web 端：聊天 + 会话历史已可用；全文搜索 / 知识库(RAG) / 导入导出仍在语义化中（见路线图）。
 
+## 🗄 数据 / 配置存储位置
+
+| 内容 | 桌面端（Tauri） | 服务器版（taffy-web / Docker） |
+|---|---|---|
+| 会话 + 消息 | `taffy-studio.db`（应用配置目录） | `--db-path` 指定的库（默认 `./taffy.db`；Docker 为 `/data/taffy.db`） |
+| 设置（语言 / 主题 / 服务商 / 模板 / MCP 服务器） | 同一个库里的 `kv` 表 | 同一个库里的 `kv` 表 |
+| API 密钥 | 操作系统密钥环（服务名 `com.taffy.studio`） | 环境变量 `TAFFY_*_API_KEY`（推荐）；若在界面里填写则存入库的 `kv` 表 |
+| 自动备份 | 应用配置目录下的 `backups/` | 暂无 —— 直接备份 / 挂载那个 DB 文件即可 |
+
+桌面端「应用配置目录」随系统：
+- Windows：`%APPDATA%\com.taffy.studio\`
+- macOS：`~/Library/Application Support/com.taffy.studio/`
+- Linux：`~/.config/com.taffy.studio/`
+
+> 一句话：桌面端 = 一个 `taffy-studio.db` + 系统密钥环；服务器版 = 一个 DB 文件（容器里挂 `/data` 卷即持久化）+ 环境变量里的密钥。
+
 ## ⚙️ 前置条件
 
 | 工具 | 用途 |
