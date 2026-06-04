@@ -92,12 +92,14 @@ export function uuid(): string {
   return crypto.randomUUID()
 }
 
-export async function listConversations(): Promise<Conversation[]> {
-  const conn = await db()
-  // Pinned rows bubble to the top; everything else falls back to recency.
-  return conn.select<Conversation[]>(
-    'SELECT id, title, created_at, updated_at, provider_id, model, temperature, pinned, max_tokens, system_prompt FROM conversations ORDER BY pinned DESC, updated_at DESC',
-  )
+// Conversation + message ops are now SEMANTIC: they delegate to the backend
+// driver (`services/api`), which runs them in taffy-core::db (Tauri command on
+// desktop, HTTP route on web). The SQL itself lives in Rust. Search / RAG /
+// export below still use the low-level `db()` facade pending their own
+// semantic endpoints.
+
+export function listConversations(): Promise<Conversation[]> {
+  return api.listConversations()
 }
 
 /** Optional initial-state for a new conversation. NULL/undefined on any
@@ -112,170 +114,78 @@ export interface ConversationInit {
   systemPrompt?: string | null
 }
 
-export async function createConversation(
+export function createConversation(
   title: string,
   init?: ConversationInit,
 ): Promise<Conversation> {
-  const conn = await db()
-  const now = Date.now()
-  // Normalize empty string system_prompt to NULL so "IS NOT NULL" stays a
-  // valid "has a system prompt at all?" predicate (same rule we use for
-  // updateConversationSystemPrompt below).
-  const systemPrompt =
-    init?.systemPrompt && init.systemPrompt.length > 0 ? init.systemPrompt : null
-  const row: Conversation = {
-    id: uuid(),
-    title,
-    created_at: now,
-    updated_at: now,
-    provider_id: init?.providerId ?? null,
-    model: init?.model ?? null,
-    temperature: init?.temperature ?? null,
-    max_tokens: init?.maxTokens ?? null,
-    system_prompt: systemPrompt,
-  }
-  await conn.execute(
-    'INSERT INTO conversations (id, title, created_at, updated_at, provider_id, model, temperature, max_tokens, system_prompt) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
-    [
-      row.id,
-      row.title,
-      row.created_at,
-      row.updated_at,
-      row.provider_id,
-      row.model,
-      row.temperature,
-      row.max_tokens,
-      row.system_prompt,
-    ],
-  )
-  return row
+  return api.createConversation(title, init)
 }
 
 /** Update the per-conversation provider/model override. Pass null to clear. */
-export async function updateConversationModel(
+export function updateConversationModel(
   id: string,
   providerId: string | null,
   model: string | null,
 ): Promise<void> {
-  const conn = await db()
-  await conn.execute(
-    'UPDATE conversations SET provider_id = $1, model = $2, updated_at = $3 WHERE id = $4',
-    [providerId, model, Date.now(), id],
-  )
+  return api.updateConversationModel(id, providerId, model)
 }
 
 /** Update only the per-conversation temperature override. Pass null to clear. */
-export async function updateConversationTemperature(
+export function updateConversationTemperature(
   id: string,
   temperature: number | null,
 ): Promise<void> {
-  const conn = await db()
-  await conn.execute(
-    'UPDATE conversations SET temperature = $1, updated_at = $2 WHERE id = $3',
-    [temperature, Date.now(), id],
-  )
+  return api.updateConversationTemperature(id, temperature)
 }
 
 /** Update only the per-conversation maxTokens override. Pass null to clear. */
-export async function updateConversationMaxTokens(
+export function updateConversationMaxTokens(
   id: string,
   maxTokens: number | null,
 ): Promise<void> {
-  const conn = await db()
-  await conn.execute(
-    'UPDATE conversations SET max_tokens = $1, updated_at = $2 WHERE id = $3',
-    [maxTokens, Date.now(), id],
-  )
+  return api.updateConversationMaxTokens(id, maxTokens)
 }
 
 /** Update only the per-conversation system prompt. Pass null/'' to clear. */
-export async function updateConversationSystemPrompt(
+export function updateConversationSystemPrompt(
   id: string,
   systemPrompt: string | null,
 ): Promise<void> {
-  const conn = await db()
-  // Normalize empty strings to NULL so "system_prompt IS NOT NULL" stays the
-  // canonical "is there a system prompt at all?" predicate.
-  const normalized = systemPrompt && systemPrompt.length > 0 ? systemPrompt : null
-  await conn.execute(
-    'UPDATE conversations SET system_prompt = $1, updated_at = $2 WHERE id = $3',
-    [normalized, Date.now(), id],
-  )
+  return api.updateConversationSystemPrompt(id, systemPrompt)
 }
 
-export async function appendMessage(
+export function appendMessage(
   conversationId: string,
   role: Message['role'],
   content: string,
   attachments?: MessageAttachment[],
 ): Promise<Message> {
-  const conn = await db()
-  const now = Date.now()
-  const row: Message = {
-    id: uuid(),
-    conversation_id: conversationId,
-    role,
-    content,
-    created_at: now,
-    attachments,
-  }
-  const attachmentsJson =
-    attachments && attachments.length > 0 ? JSON.stringify(attachments) : null
-  await conn.execute(
-    'INSERT INTO messages (id, conversation_id, role, content, created_at, attachments) VALUES ($1, $2, $3, $4, $5, $6)',
-    [row.id, row.conversation_id, row.role, row.content, row.created_at, attachmentsJson],
-  )
-  await conn.execute(
-    'UPDATE conversations SET updated_at = $1 WHERE id = $2',
-    [now, conversationId],
-  )
-  return row
+  return api.appendMessage(conversationId, role, content, attachments)
 }
 
-export async function listMessages(conversationId: string): Promise<Message[]> {
-  const conn = await db()
-  type RawMessage = Omit<Message, 'attachments'> & { attachments: unknown }
-  const rows = await conn.select<RawMessage[]>(
-    'SELECT id, conversation_id, role, content, created_at, attachments FROM messages WHERE conversation_id = $1 ORDER BY created_at ASC',
-    [conversationId],
-  )
-  return rows.map((r) => ({ ...r, attachments: parseAttachments(r.attachments) }))
+export function listMessages(conversationId: string): Promise<Message[]> {
+  return api.listMessages(conversationId)
 }
 
 /** Delete a single message. Used by the Regenerate flow to drop the last
  *  assistant reply before re-streaming from the same history. */
-export async function deleteMessage(id: string): Promise<void> {
-  const conn = await db()
-  await conn.execute('DELETE FROM messages WHERE id = $1', [id])
+export function deleteMessage(id: string): Promise<void> {
+  return api.deleteMessage(id)
 }
 
 /** Patch the title of a conversation. */
-export async function updateConversationTitle(id: string, title: string): Promise<void> {
-  const conn = await db()
-  await conn.execute(
-    'UPDATE conversations SET title = $1, updated_at = $2 WHERE id = $3',
-    [title, Date.now(), id],
-  )
+export function updateConversationTitle(id: string, title: string): Promise<void> {
+  return api.updateConversationTitle(id, title)
 }
 
 /** Pin / unpin a conversation so it bubbles above the recency sort. */
-export async function updateConversationPinned(id: string, pinned: boolean): Promise<void> {
-  const conn = await db()
-  // Intentionally do NOT touch updated_at — pinning shouldn't masquerade as
-  // "new activity" the way renaming does, since it's a layout-only flip.
-  await conn.execute(
-    'UPDATE conversations SET pinned = $1 WHERE id = $2',
-    [pinned ? 1 : 0, id],
-  )
+export function updateConversationPinned(id: string, pinned: boolean): Promise<void> {
+  return api.updateConversationPinned(id, pinned)
 }
 
-/** Delete a conversation; messages cascade via the FK on the messages table
- *  if foreign_keys are on, but we delete explicitly first to make the
- *  behavior portable across plugin-sql connection settings. */
-export async function deleteConversation(id: string): Promise<void> {
-  const conn = await db()
-  await conn.execute('DELETE FROM messages WHERE conversation_id = $1', [id])
-  await conn.execute('DELETE FROM conversations WHERE id = $1', [id])
+/** Delete a conversation; its messages cascade. */
+export function deleteConversation(id: string): Promise<void> {
+  return api.deleteConversation(id)
 }
 
 // ---------- Full-text search (FTS5) ----------

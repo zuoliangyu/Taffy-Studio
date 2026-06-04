@@ -12,6 +12,12 @@ import type {
   StreamEvent,
   StreamHandle,
 } from '../lib/llm'
+import type {
+  Conversation,
+  ConversationInit,
+  Message,
+  MessageAttachment,
+} from '../lib/db'
 import type { McpServerConfig, McpTool } from '../lib/mcp'
 import type { BackupInfo, StorageInfo } from '../lib/storage'
 import type { DbExecResult, EmbedRequest } from './tauriApi'
@@ -38,6 +44,21 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
   })
   if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text().catch(() => '')}`)
   return r.json() as Promise<T>
+}
+
+async function getJson<T>(path: string): Promise<T> {
+  const r = await fetch(path, { headers: authHeaders() })
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text().catch(() => '')}`)
+  return r.json() as Promise<T>
+}
+
+async function send(path: string, method: string, body?: unknown): Promise<void> {
+  const r = await fetch(path, {
+    method,
+    headers: authHeaders(),
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text().catch(() => '')}`)
 }
 
 // ---------- misc ----------
@@ -202,12 +223,91 @@ export function openConfigDir(): Promise<void> {
   return notImpl('openConfigDir')
 }
 
-// ---------- SQLite ----------
+// ---------- SQLite — semantic ops ----------
 
 export function dbInit(): Promise<void> {
-  return notImpl('dbInit')
+  // Server opens the DB on startup; nothing to do client-side.
+  return Promise.resolve()
 }
 
+export function listConversations(): Promise<Conversation[]> {
+  return getJson<Conversation[]>('/api/conversations')
+}
+
+export function createConversation(
+  title: string,
+  init?: ConversationInit,
+): Promise<Conversation> {
+  return postJson<Conversation>('/api/conversations', { title, init })
+}
+
+const conv = (id: string) => `/api/conversations/${encodeURIComponent(id)}`
+
+export function updateConversationModel(
+  id: string,
+  providerId: string | null,
+  model: string | null,
+): Promise<void> {
+  return send(`${conv(id)}/model`, 'POST', { providerId, model })
+}
+
+export function updateConversationTemperature(
+  id: string,
+  temperature: number | null,
+): Promise<void> {
+  return send(`${conv(id)}/temperature`, 'POST', { temperature })
+}
+
+export function updateConversationMaxTokens(
+  id: string,
+  maxTokens: number | null,
+): Promise<void> {
+  return send(`${conv(id)}/max_tokens`, 'POST', { maxTokens })
+}
+
+export function updateConversationSystemPrompt(
+  id: string,
+  systemPrompt: string | null,
+): Promise<void> {
+  return send(`${conv(id)}/system_prompt`, 'POST', { systemPrompt })
+}
+
+export function updateConversationTitle(id: string, title: string): Promise<void> {
+  return send(`${conv(id)}/title`, 'POST', { title })
+}
+
+export function updateConversationPinned(id: string, pinned: boolean): Promise<void> {
+  return send(`${conv(id)}/pinned`, 'POST', { pinned })
+}
+
+export function deleteConversation(id: string): Promise<void> {
+  return send(conv(id), 'DELETE')
+}
+
+export function appendMessage(
+  conversationId: string,
+  role: Message['role'],
+  content: string,
+  attachments?: MessageAttachment[],
+): Promise<Message> {
+  return postJson<Message>(`${conv(conversationId)}/messages`, {
+    role,
+    content,
+    attachments,
+  })
+}
+
+export function listMessages(conversationId: string): Promise<Message[]> {
+  return getJson<Message[]>(`${conv(conversationId)}/messages`)
+}
+
+export function deleteMessage(id: string): Promise<void> {
+  return send(`/api/messages/${encodeURIComponent(id)}`, 'DELETE')
+}
+
+// Generic SQL has no web counterpart by design (the user chose semantic
+// endpoints, not a SQL passthrough). Search / RAG / export will get their own
+// semantic endpoints; until then these are unavailable in the browser.
 export function dbSelect<T>(_sql: string, _params?: unknown[]): Promise<T> {
   return notImpl('dbSelect')
 }
@@ -218,14 +318,19 @@ export function dbExecute(_sql: string, _params?: unknown[]): Promise<DbExecResu
 
 // ---------- KV store ----------
 
-export function kvGet<T>(_key: string): Promise<T | null> {
-  return notImpl('kvGet')
+const kv = (key: string) => `/api/kv/${encodeURIComponent(key)}`
+
+export async function kvGet<T>(key: string): Promise<T | null> {
+  const r = await fetch(kv(key), { headers: authHeaders() })
+  if (r.status === 404) return null
+  if (!r.ok) throw new Error(`HTTP ${r.status}`)
+  return r.json() as Promise<T>
 }
 
-export function kvSet<T>(_key: string, _value: T): Promise<void> {
-  return notImpl('kvSet')
+export function kvSet<T>(key: string, value: T): Promise<void> {
+  return send(kv(key), 'PUT', value)
 }
 
-export function kvDelete(_key: string): Promise<void> {
-  return notImpl('kvDelete')
+export function kvDelete(key: string): Promise<void> {
+  return send(kv(key), 'DELETE')
 }

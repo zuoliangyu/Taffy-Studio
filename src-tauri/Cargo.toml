@@ -28,8 +28,6 @@ tauri-plugin-log = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-os = "2"
 tauri-plugin-shell = "2"
-tauri-plugin-sql = { version = "2", features = ["sqlite"] }
-tauri-plugin-store = "2"
 
 # Cross-platform shared deps — used by lib.rs on every target, so they must
 # live in the top-level [dependencies] (NOT the desktop-only target block, or

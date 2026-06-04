@@ -2,6 +2,7 @@ node_modules
 dist
 dist-linux
 dist-android
+target
 src-tauri/target
 src-tauri/gen
 .git

@@ -61,10 +61,11 @@ Glassmorphism UI · OpenAI / Anthropic / Gemini native protocols · streaming ·
 
 > The frontend switches API layers via the compile-time flag `__IS_TAURI__`
 > (Tauri `invoke` ↔ HTTP `fetch`/SSE), so component code is 100% reused.
-> Today: `taffy-core`, the frontend `api` abstraction, and the `taffy-web`
-> (axum) LLM/embed endpoints (SSE + single-user env token) are in place, with
-> the LLM surface of `webApi.ts` implemented. Conversation/KV/secret/MCP
-> semantic endpoints are in progress (see the [Roadmap](#-roadmap)).
+> Today: `taffy-core` (incl. the SQLite data layer), the frontend `api`
+> abstraction, and `taffy-web` (axum) are all in place — conversations /
+> messages / KV are now shared **semantic** endpoints on both shells, and the
+> desktop dropped plugin-sql/store. Semantic search / RAG / export and mobile
+> secrets are still in progress (see the [Roadmap](#-roadmap)).
 
 ### 📚 Companion docs
 
@@ -276,8 +277,10 @@ Tracked in [`MIGRATION.md`](./MIGRATION.md). High level:
 - [x] **Knowledge base / RAG** — local vector store (brute-force cosine), per-conversation retrieval injection
 - [x] **Shared Rust core** — platform-agnostic `crates/taffy-core` (LLM / embeddings / DTOs) split out of the Tauri shell
 - [x] **Frontend backend abstraction** — `services/api.ts` + `tauriApi.ts` + `webApi.ts`; UI fully decoupled from transport
-- [x] **Web shell skeleton** — `taffy-web` (axum + rust-embed) + single-user env token + LLM/embed endpoints (SSE), with the matching `webApi.ts` impl
-- [ ] **Full self-hosted web server** (Docker) — data layer (conversations/messages/KV) lowered into the core + secret/MCP; browser end-to-end
+- [x] **Web shell skeleton** — `taffy-web` (axum + rust-embed) + single-user env token + LLM/embed endpoints (SSE)
+- [x] **Data layer lowered into the core** — SQLite migrations / conversations / messages / KV moved into `taffy-core::db` (rusqlite), shared semantic endpoints on both shells; desktop dropped plugin-sql/store
+- [x] **Web Docker image** — `docker/web.Dockerfile` + `scripts/dev-docker.{ps1,sh}` (one-command local web server for testing)
+- [ ] **Browser end-to-end** — semantic endpoints for search / RAG / import-export (currently desktop uses a low-level SQL path; unavailable on web)
 - [ ] Streaming markdown stability (no flicker on half-rendered tables/code)
 - [ ] Token-by-token streaming during the agentic tool-use loop (currently per-round)
 - [ ] Stronghold / Android Keystore / iOS Keychain for mobile secret storage

@@ -16,12 +16,7 @@
     "http:default",
     "dialog:default",
     "notification:default",
-    "shell:allow-open",
-    "store:default",
-    "sql:default",
-    "sql:allow-load",
-    "sql:allow-execute",
-    "sql:allow-select"
+    "shell:allow-open"
   ],
   "platforms": ["linux", "macOS", "windows", "android", "iOS"]
 }

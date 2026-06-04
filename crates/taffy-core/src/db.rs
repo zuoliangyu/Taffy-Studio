@@ -105,10 +105,79 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS kv (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
 ];
 
+fn table_exists(conn: &Connection, name: &str) -> bool {
+    conn.query_row(
+        "SELECT 1 FROM sqlite_master WHERE type IN ('table','view') AND name = ?1",
+        params![name],
+        |_| Ok(()),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .is_some()
+}
+
+fn column_exists(conn: &Connection, table: &str, col: &str) -> bool {
+    let mut stmt = match conn.prepare(&format!("PRAGMA table_info({table})")) {
+        Ok(s) => s,
+        Err(_) => return false,
+    };
+    let mut rows = match stmt.query([]) {
+        Ok(r) => r,
+        Err(_) => return false,
+    };
+    while let Ok(Some(row)) = rows.next() {
+        if let Ok(name) = row.get::<_, String>(1) {
+            if name == col {
+                return true;
+            }
+        }
+    }
+    false
+}
+
+/// Infer how far a pre-existing database was migrated by probing its schema.
+/// Needed because the old desktop chain (tauri-plugin-sql) tracked progress in
+/// its own table, not `PRAGMA user_version` — so an existing v8 DB shows
+/// user_version 0 and would otherwise re-run non-idempotent ALTERs.
+fn detect_baseline(conn: &Connection) -> i64 {
+    if !table_exists(conn, "conversations") {
+        return 0;
+    }
+    let mut v = 1;
+    let checks: &[(i64, fn(&Connection) -> bool)] = &[
+        (2, |c| column_exists(c, "messages", "attachments")),
+        (3, |c| column_exists(c, "conversations", "provider_id")),
+        (4, |c| column_exists(c, "conversations", "temperature")),
+        (5, |c| column_exists(c, "conversations", "pinned")),
+        (6, |c| column_exists(c, "conversations", "system_prompt")),
+        (7, |c| table_exists(c, "messages_fts")),
+        (8, |c| table_exists(c, "knowledge_bases")),
+        (9, |c| table_exists(c, "kv")),
+    ];
+    for (ver, present) in checks {
+        if present(conn) {
+            v = *ver;
+        } else {
+            break;
+        }
+    }
+    v
+}
+
 fn run_migrations(conn: &Connection) -> Result<(), String> {
-    let current: i64 = conn
+    let mut current: i64 = conn
         .query_row("PRAGMA user_version", [], |r| r.get(0))
         .map_err(e2s)?;
+    // Adopt a DB previously migrated by plugin-sql (user_version still 0).
+    if current == 0 {
+        let baseline = detect_baseline(conn);
+        if baseline > 0 {
+            conn.execute_batch(&format!("PRAGMA user_version = {baseline};"))
+                .map_err(e2s)?;
+            current = baseline;
+        }
+    }
     for (i, sql) in MIGRATIONS.iter().enumerate() {
         let v = (i + 1) as i64;
         if v > current {
@@ -449,6 +518,109 @@ impl Db {
             .map(|_| ())
             .map_err(e2s)
     }
+
+    /// Wipe all user data (keeps the schema). Used by the "reset database"
+    /// action — done in-connection rather than deleting the file so it works
+    /// while the handle is open (Windows won't unlink an open SQLite file).
+    pub fn reset(&self) -> Result<(), String> {
+        let conn = self.lock();
+        conn.execute_batch(
+            "DELETE FROM knowledge_chunks; \
+             DELETE FROM knowledge_bases; \
+             DELETE FROM messages; \
+             DELETE FROM conversations; \
+             DELETE FROM kv; \
+             INSERT INTO messages_fts(messages_fts) VALUES('rebuild');",
+        )
+        .map_err(e2s)?;
+        conn.execute_batch("VACUUM;").map_err(e2s)?;
+        Ok(())
+    }
+
+    // ----- generic SQL (escape hatch) -----
+    //
+    // Used by paths not yet converted to semantic ops (search / RAG / export).
+    // Rows come back as JSON objects keyed by column name — same shape the old
+    // tauri-plugin-sql bridge produced, so the frontend query code is unchanged.
+
+    pub fn select_json(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<Vec<serde_json::Value>, String> {
+        let conn = self.lock();
+        let mut stmt = conn.prepare(sql).map_err(e2s)?;
+        let cols: Vec<String> = stmt.column_names().iter().map(|s| s.to_string()).collect();
+        let bound = to_sql_params(params);
+        let mut rows = stmt
+            .query(rusqlite::params_from_iter(bound.iter()))
+            .map_err(e2s)?;
+        let mut out = Vec::new();
+        while let Some(row) = rows.next().map_err(e2s)? {
+            let mut obj = serde_json::Map::with_capacity(cols.len());
+            for (i, name) in cols.iter().enumerate() {
+                let vref = row.get_ref(i).map_err(e2s)?;
+                obj.insert(name.clone(), valueref_to_json(vref));
+            }
+            out.push(serde_json::Value::Object(obj));
+        }
+        Ok(out)
+    }
+
+    pub fn execute_sql(
+        &self,
+        sql: &str,
+        params: &[serde_json::Value],
+    ) -> Result<ExecResult, String> {
+        let conn = self.lock();
+        let bound = to_sql_params(params);
+        let n = conn
+            .execute(sql, rusqlite::params_from_iter(bound.iter()))
+            .map_err(e2s)?;
+        Ok(ExecResult {
+            rows_affected: n as i64,
+            last_insert_id: conn.last_insert_rowid(),
+        })
+    }
+}
+
+/// Mirrors tauri-plugin-sql's QueryResult so the frontend facade is unchanged.
+#[derive(Serialize, Debug)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecResult {
+    pub rows_affected: i64,
+    pub last_insert_id: i64,
+}
+
+fn to_sql_params(params: &[serde_json::Value]) -> Vec<rusqlite::types::Value> {
+    use rusqlite::types::Value as V;
+    params
+        .iter()
+        .map(|p| match p {
+            serde_json::Value::Null => V::Null,
+            serde_json::Value::Bool(b) => V::Integer(*b as i64),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    V::Integer(i)
+                } else {
+                    V::Real(n.as_f64().unwrap_or(0.0))
+                }
+            }
+            serde_json::Value::String(s) => V::Text(s.clone()),
+            other => V::Text(other.to_string()),
+        })
+        .collect()
+}
+
+fn valueref_to_json(v: rusqlite::types::ValueRef<'_>) -> serde_json::Value {
+    use rusqlite::types::ValueRef as R;
+    match v {
+        R::Null => serde_json::Value::Null,
+        R::Integer(i) => serde_json::Value::from(i),
+        R::Real(f) => serde_json::Value::from(f),
+        R::Text(bytes) => serde_json::Value::from(String::from_utf8_lossy(bytes).into_owned()),
+        R::Blob(_) => serde_json::Value::Null,
+    }
 }
 
 // ---------- row mappers ----------
@@ -548,5 +720,47 @@ mod tests {
         db.delete_conversation(&c.id).unwrap();
         assert_eq!(db.list_conversations().unwrap().len(), 0);
         assert_eq!(db.list_messages(&c.id).unwrap().len(), 0);
+    }
+
+    #[test]
+    fn generic_sql_round_trip() {
+        let db = Db::open_in_memory().unwrap();
+        let c = db
+            .create_conversation("g", &ConversationInit::default())
+            .unwrap();
+        let rows = db
+            .select_json(
+                "SELECT id, title FROM conversations WHERE id = ?1",
+                &[serde_json::json!(c.id)],
+            )
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0]["title"], serde_json::json!("g"));
+        let res = db
+            .execute_sql(
+                "UPDATE conversations SET title = ?1 WHERE id = ?2",
+                &[serde_json::json!("g2"), serde_json::json!(c.id)],
+            )
+            .unwrap();
+        assert_eq!(res.rows_affected, 1);
+    }
+
+    #[test]
+    fn adopts_existing_plugin_sql_db() {
+        // Simulate a DB migrated by plugin-sql: full v8 schema but
+        // user_version still 0 (plugin-sql tracks elsewhere).
+        let conn = Connection::open_in_memory().unwrap();
+        for sql in &MIGRATIONS[..8] {
+            conn.execute_batch(sql).unwrap();
+        }
+        conn.execute_batch("PRAGMA user_version = 0;").unwrap();
+        // Re-running must not error on the non-idempotent ALTERs; it should
+        // detect baseline 8 and apply only v9 (kv).
+        run_migrations(&conn).unwrap();
+        let v: i64 = conn
+            .query_row("PRAGMA user_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(v, MIGRATIONS.len() as i64);
+        assert!(table_exists(&conn, "kv"));
     }
 }

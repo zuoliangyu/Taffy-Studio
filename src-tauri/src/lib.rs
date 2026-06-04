@@ -13,7 +13,6 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
-use tauri_plugin_sql::{Migration, MigrationKind};
 use tokio::sync::Mutex;
 
 use mcp::{McpServerConfig, McpState, McpTool};
@@ -954,21 +953,16 @@ fn backup_now(app: AppHandle) -> Result<BackupInfo, String> {
 /// this. We do NOT delete the backups directory — they survive a reset on
 /// purpose, so the user can recover.
 #[tauri::command]
-fn reset_database(app: AppHandle) -> Result<(), String> {
-    let db = db_path(&app)?;
+fn reset_database(app: AppHandle, db: State<'_, taffy_core::Db>) -> Result<(), String> {
+    let dbfile = db_path(&app)?;
     let dir = backups_dir(&app)?;
-    // Belt-and-suspenders: take one more snapshot before nuking.
-    if db.exists() {
-        let _ = copy_backup(&db, &dir);
+    // Belt-and-suspenders: take one more snapshot before wiping.
+    if dbfile.exists() {
+        let _ = copy_backup(&dbfile, &dir);
         prune_backups(&dir, MAX_BACKUPS + 1);
     }
-    for ext in ["", "-wal", "-shm"] {
-        let p = db.with_file_name(format!("{}{}", DB_FILE, ext));
-        if p.exists() {
-            std::fs::remove_file(&p).map_err(|e| e.to_string())?;
-        }
-    }
-    Ok(())
+    // Wipe in-connection (don't unlink an open file — Windows won't allow it).
+    db.reset()
 }
 
 // ---------- File I/O helpers for dialog-picked paths ----------
@@ -1030,134 +1024,153 @@ fn open_config_dir(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-// ---------- DB migrations ----------
+// ---------- Data layer (taffy-core::db) ----------
+//
+// Thin Tauri commands over the shared SQLite layer. The DB handle is opened +
+// migrated once in setup() and kept as managed state.
 
-fn migrations() -> Vec<Migration> {
-    vec![
-        Migration {
-            version: 1,
-            description: "initial schema",
-            sql: r#"
-                CREATE TABLE IF NOT EXISTS conversations (
-                    id          TEXT PRIMARY KEY,
-                    title       TEXT NOT NULL,
-                    created_at  INTEGER NOT NULL,
-                    updated_at  INTEGER NOT NULL
-                );
-                CREATE TABLE IF NOT EXISTS messages (
-                    id              TEXT PRIMARY KEY,
-                    conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-                    role            TEXT NOT NULL,
-                    content         TEXT NOT NULL,
-                    created_at      INTEGER NOT NULL
-                );
-                CREATE INDEX IF NOT EXISTS idx_messages_convo ON messages(conversation_id, created_at);
-            "#,
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 2,
-            description: "add attachments column",
-            // JSON-encoded array of {id, type, name, mime, size, data(base64)}.
-            // Null when there are no attachments to keep existing rows cheap.
-            sql: "ALTER TABLE messages ADD COLUMN attachments TEXT NULL;",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 3,
-            description: "add per-conversation provider + model",
-            // NULL means "use the global default provider / its default model".
-            // Both must be NULLABLE so older conversations keep working unchanged.
-            sql: "ALTER TABLE conversations ADD COLUMN provider_id TEXT NULL;\
-                  ALTER TABLE conversations ADD COLUMN model TEXT NULL;",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 4,
-            description: "add per-conversation temperature",
-            // REAL NULL — NULL means "use the global default temperature".
-            sql: "ALTER TABLE conversations ADD COLUMN temperature REAL NULL;",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 5,
-            description: "add conversation pin flag",
-            // 0 / 1, defaulted so existing rows are explicitly unpinned. Used
-            // by the sidebar to bubble pinned rows above the recency sort.
-            sql: "ALTER TABLE conversations ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0;",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 6,
-            description: "add per-conversation max_tokens + system_prompt",
-            // Both NULL by default: max_tokens NULL = let Rust dispatch decide
-            // (Anthropic gets its 4096 default, OpenAI/Gemini omit the field);
-            // system_prompt NULL = no system message prepended at request time.
-            sql: "ALTER TABLE conversations ADD COLUMN max_tokens INTEGER NULL;\
-                  ALTER TABLE conversations ADD COLUMN system_prompt TEXT NULL;",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 7,
-            description: "fts5 full-text search on messages.content",
-            // External-content FTS5 table mirroring messages.content. We key
-            // off SQLite's implicit rowid (messages has TEXT PRIMARY KEY 'id'
-            // but still gets a rowid). Three triggers keep the index in sync
-            // with insert/delete/update on messages — the canonical FTS5
-            // external-content idiom. Backfill at the end picks up any rows
-            // that already existed before this migration ran.
-            //
-            // NOTE: every line ends with a SPACE then `\` because Rust
-            // string-literal line continuation eats trailing whitespace —
-            // without that space we'd get tokens like "BEGININSERT".
-            sql: "CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5( \
-                      content, \
-                      content='messages', \
-                      content_rowid='rowid', \
-                      tokenize='unicode61 remove_diacritics 2' \
-                  ); \
-                  CREATE TRIGGER IF NOT EXISTS messages_ai AFTER INSERT ON messages BEGIN \
-                      INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content); \
-                  END; \
-                  CREATE TRIGGER IF NOT EXISTS messages_ad AFTER DELETE ON messages BEGIN \
-                      INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content); \
-                  END; \
-                  CREATE TRIGGER IF NOT EXISTS messages_au AFTER UPDATE ON messages BEGIN \
-                      INSERT INTO messages_fts(messages_fts, rowid, content) VALUES('delete', old.rowid, old.content); \
-                      INSERT INTO messages_fts(rowid, content) VALUES (new.rowid, new.content); \
-                  END; \
-                  INSERT INTO messages_fts(messages_fts) VALUES('rebuild');",
-            kind: MigrationKind::Up,
-        },
-        Migration {
-            version: 8,
-            description: "knowledge bases + chunks (local RAG vector store)",
-            // Embeddings are stored as a JSON float array in TEXT. We do
-            // brute-force cosine on the JS side (fine at local-app scale), so
-            // no native vector extension is needed. `dim` lets the UI warn on a
-            // model/embedding mismatch. ON DELETE CASCADE keeps chunks tidy.
-            sql: "CREATE TABLE IF NOT EXISTS knowledge_bases ( \
-                      id          TEXT PRIMARY KEY, \
-                      name        TEXT NOT NULL, \
-                      provider_id TEXT NULL, \
-                      embed_model TEXT NULL, \
-                      dim         INTEGER NULL, \
-                      created_at  INTEGER NOT NULL \
-                  ); \
-                  CREATE TABLE IF NOT EXISTS knowledge_chunks ( \
-                      id          TEXT PRIMARY KEY, \
-                      kb_id       TEXT NOT NULL REFERENCES knowledge_bases(id) ON DELETE CASCADE, \
-                      doc_id      TEXT NOT NULL, \
-                      source      TEXT NOT NULL, \
-                      text        TEXT NOT NULL, \
-                      embedding   TEXT NOT NULL, \
-                      created_at  INTEGER NOT NULL \
-                  ); \
-                  CREATE INDEX IF NOT EXISTS idx_chunks_kb ON knowledge_chunks(kb_id); \
-                  CREATE INDEX IF NOT EXISTS idx_chunks_doc ON knowledge_chunks(doc_id);",
-            kind: MigrationKind::Up,
-        },
-    ]
+#[tauri::command]
+fn conv_list(db: State<'_, taffy_core::Db>) -> Result<Vec<taffy_core::Conversation>, String> {
+    db.list_conversations()
+}
+
+#[tauri::command]
+fn conv_create(
+    db: State<'_, taffy_core::Db>,
+    title: String,
+    init: Option<taffy_core::db::ConversationInit>,
+) -> Result<taffy_core::Conversation, String> {
+    db.create_conversation(&title, &init.unwrap_or_default())
+}
+
+#[tauri::command]
+fn conv_update_model(
+    db: State<'_, taffy_core::Db>,
+    id: String,
+    provider_id: Option<String>,
+    model: Option<String>,
+) -> Result<(), String> {
+    db.update_conversation_model(&id, provider_id.as_deref(), model.as_deref())
+}
+
+#[tauri::command]
+fn conv_update_temperature(
+    db: State<'_, taffy_core::Db>,
+    id: String,
+    temperature: Option<f64>,
+) -> Result<(), String> {
+    db.update_conversation_temperature(&id, temperature)
+}
+
+#[tauri::command]
+fn conv_update_max_tokens(
+    db: State<'_, taffy_core::Db>,
+    id: String,
+    max_tokens: Option<i64>,
+) -> Result<(), String> {
+    db.update_conversation_max_tokens(&id, max_tokens)
+}
+
+#[tauri::command]
+fn conv_update_system_prompt(
+    db: State<'_, taffy_core::Db>,
+    id: String,
+    system_prompt: Option<String>,
+) -> Result<(), String> {
+    db.update_conversation_system_prompt(&id, system_prompt.as_deref())
+}
+
+#[tauri::command]
+fn conv_update_title(
+    db: State<'_, taffy_core::Db>,
+    id: String,
+    title: String,
+) -> Result<(), String> {
+    db.update_conversation_title(&id, &title)
+}
+
+#[tauri::command]
+fn conv_update_pinned(
+    db: State<'_, taffy_core::Db>,
+    id: String,
+    pinned: bool,
+) -> Result<(), String> {
+    db.update_conversation_pinned(&id, pinned)
+}
+
+#[tauri::command]
+fn conv_delete(db: State<'_, taffy_core::Db>, id: String) -> Result<(), String> {
+    db.delete_conversation(&id)
+}
+
+#[tauri::command]
+fn msg_append(
+    db: State<'_, taffy_core::Db>,
+    conversation_id: String,
+    role: String,
+    content: String,
+    attachments: Option<serde_json::Value>,
+) -> Result<taffy_core::Message, String> {
+    db.append_message(&conversation_id, &role, &content, attachments)
+}
+
+#[tauri::command]
+fn msg_list(
+    db: State<'_, taffy_core::Db>,
+    conversation_id: String,
+) -> Result<Vec<taffy_core::Message>, String> {
+    db.list_messages(&conversation_id)
+}
+
+#[tauri::command]
+fn msg_delete(db: State<'_, taffy_core::Db>, id: String) -> Result<(), String> {
+    db.delete_message(&id)
+}
+
+#[tauri::command]
+fn kv_get(
+    db: State<'_, taffy_core::Db>,
+    key: String,
+) -> Result<Option<serde_json::Value>, String> {
+    db.kv_get(&key)
+}
+
+#[tauri::command]
+fn kv_set(
+    db: State<'_, taffy_core::Db>,
+    key: String,
+    value: serde_json::Value,
+) -> Result<(), String> {
+    db.kv_set(&key, &value)
+}
+
+#[tauri::command]
+fn kv_delete(db: State<'_, taffy_core::Db>, key: String) -> Result<(), String> {
+    db.kv_delete(&key)
+}
+
+#[tauri::command]
+fn db_select(
+    db: State<'_, taffy_core::Db>,
+    sql: String,
+    params: Option<Vec<serde_json::Value>>,
+) -> Result<Vec<serde_json::Value>, String> {
+    db.select_json(&sql, &params.unwrap_or_default())
+}
+
+#[tauri::command]
+fn db_execute(
+    db: State<'_, taffy_core::Db>,
+    sql: String,
+    params: Option<Vec<serde_json::Value>>,
+) -> Result<taffy_core::db::ExecResult, String> {
+    db.execute_sql(&sql, &params.unwrap_or_default())
+}
+
+#[tauri::command]
+fn db_init() -> Result<(), String> {
+    // The DB is opened + migrated in setup(); nothing to do here.
+    Ok(())
 }
 
 // ---------- Entry ----------
@@ -1178,13 +1191,7 @@ pub fn run() {
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_store::Builder::default().build())
-        .plugin(
-            tauri_plugin_sql::Builder::default()
-                .add_migrations("sqlite:taffy-studio.db", migrations())
-                .build(),
-        );
+        .plugin(tauri_plugin_shell::init());
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     {
@@ -1195,10 +1202,18 @@ pub fn run() {
         .manage(Cancellation::default())
         .manage(McpState::default())
         .setup(|app| {
-            // Backup BEFORE the SQL plugin gets a chance to run migrations.
-            // If a future migration corrupts the schema, the user can revert
-            // by copying the latest backup over taffy-studio.db.
+            // Backup BEFORE migrations run. If a future migration corrupts the
+            // schema, the user can revert by copying the latest backup over
+            // taffy-studio.db.
             startup_backup(app.handle());
+            // Open + migrate the SQLite data layer (taffy-core), then keep the
+            // handle as managed state for the conv_/msg_/kv_/db_ commands.
+            let path = db_path(app.handle())?;
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let db = taffy_core::Db::open(&path.to_string_lossy())?;
+            app.manage(db);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1222,264 +1237,27 @@ pub fn run() {
             mcp_list_tools,
             mcp_call_tool,
             embed_texts,
+            // data layer (taffy-core::db)
+            conv_list,
+            conv_create,
+            conv_update_model,
+            conv_update_temperature,
+            conv_update_max_tokens,
+            conv_update_system_prompt,
+            conv_update_title,
+            conv_update_pinned,
+            conv_delete,
+            msg_append,
+            msg_list,
+            msg_delete,
+            kv_get,
+            kv_set,
+            kv_delete,
+            db_select,
+            db_execute,
+            db_init,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-// ---------- Migration upgrade-path test ----------
-//
-// We don't have the previous-tag-binary swap test the ROADMAP described
-// yet (it needs a published v0.1.0 to swap against). What we DO have is
-// the data layer's whole migration chain exercised in CI on every PR:
-// seed a v1-shape DB, walk the migrations forward, and assert that every
-// older row survives + every new column / table is wired correctly.
-// Catches "this migration silently drops the temperature column" before
-// it hits a user.
-#[cfg(test)]
-mod migration_tests {
-    use super::migrations;
-    use rusqlite::{params, Connection};
-
-    /// Apply migrations with `version > *applied < version <= target`, in
-    /// order. Stateful: `applied` carries the last-applied version across
-    /// repeated calls so the test can step forward — `ALTER TABLE ADD
-    /// COLUMN` isn't idempotent and a naive re-run would error out the
-    /// second time.
-    fn apply_through(conn: &Connection, applied: &mut i64, target: i64) {
-        for m in migrations() {
-            let v = m.version;
-            if v <= *applied {
-                continue;
-            }
-            if v > target {
-                break;
-            }
-            conn.execute_batch(m.sql)
-                .unwrap_or_else(|e| panic!("migration v{v} failed: {e}"));
-            *applied = v;
-        }
-        assert!(*applied >= target, "migrations stopped short of v{target}");
-    }
-
-    #[test]
-    fn upgrade_path_preserves_data() {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        let conn = Connection::open(tmp.path()).unwrap();
-        // Foreign keys aren't on by default in SQLite. Plugin-sql doesn't
-        // enable them either, but turning them on here matches the spirit
-        // of the production schema's FK declarations.
-        conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
-        let mut applied: i64 = 0;
-
-        // ---- v1: bare conversations + messages ----
-        apply_through(&conn, &mut applied, 1);
-        conn.execute(
-            "INSERT INTO conversations (id, title, created_at, updated_at) VALUES (?,?,?,?)",
-            params!["c1", "Original Title", 1000_i64, 1000_i64],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?,?,?,?,?)",
-            params!["m1", "c1", "user", "hello there world", 1000_i64],
-        )
-        .unwrap();
-
-        // ---- v2: attachments column added; old rows must have NULL ----
-        apply_through(&conn, &mut applied, 2);
-        let att: Option<String> = conn
-            .query_row(
-                "SELECT attachments FROM messages WHERE id = 'm1'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert!(att.is_none(), "old rows must show NULL attachments");
-
-        // New v2-shape insert with an attachments JSON payload.
-        conn.execute(
-            "INSERT INTO messages (id, conversation_id, role, content, created_at, attachments) VALUES (?,?,?,?,?,?)",
-            params![
-                "m2",
-                "c1",
-                "assistant",
-                "got it",
-                1100_i64,
-                r#"[{"id":"a1","type":"image","name":"x.png","mime":"image/png","size":1,"data":"AA=="}]"#,
-            ],
-        )
-        .unwrap();
-
-        // ---- v3: provider_id + model ----
-        apply_through(&conn, &mut applied, 3);
-        let (pid, model): (Option<String>, Option<String>) = conn
-            .query_row(
-                "SELECT provider_id, model FROM conversations WHERE id = 'c1'",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
-        assert!(pid.is_none() && model.is_none());
-
-        // ---- v4: temperature ----
-        apply_through(&conn, &mut applied, 4);
-        let temp: Option<f64> = conn
-            .query_row(
-                "SELECT temperature FROM conversations WHERE id = 'c1'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert!(temp.is_none());
-
-        // ---- v5: pinned column with NOT NULL DEFAULT 0 ----
-        apply_through(&conn, &mut applied, 5);
-        let pinned: i64 = conn
-            .query_row(
-                "SELECT pinned FROM conversations WHERE id = 'c1'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(pinned, 0, "existing rows must default to pinned=0");
-
-        // ---- v6: max_tokens + system_prompt ----
-        apply_through(&conn, &mut applied, 6);
-        let (mt, sp): (Option<i64>, Option<String>) = conn
-            .query_row(
-                "SELECT max_tokens, system_prompt FROM conversations WHERE id = 'c1'",
-                [],
-                |r| Ok((r.get(0)?, r.get(1)?)),
-            )
-            .unwrap();
-        assert!(mt.is_none() && sp.is_none());
-
-        // ---- v7: FTS5 backfill + sync triggers ----
-        apply_through(&conn, &mut applied, 7);
-
-        // The v1-inserted message must be findable by the FTS5 backfill.
-        let count_hello: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages_fts WHERE messages_fts MATCH ?",
-                params!["hello"],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count_hello, 1, "FTS5 backfill must index pre-v7 rows");
-
-        // Original title untouched all the way through.
-        let title: String = conn
-            .query_row("SELECT title FROM conversations WHERE id = 'c1'", [], |r| {
-                r.get(0)
-            })
-            .unwrap();
-        assert_eq!(title, "Original Title");
-
-        // INSERT trigger: post-v7 inserts should automatically be indexed.
-        conn.execute(
-            "INSERT INTO messages (id, conversation_id, role, content, created_at) VALUES (?,?,?,?,?)",
-            params!["m3", "c1", "user", "supercalifragilistic", 1200_i64],
-        )
-        .unwrap();
-        let count_new: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages_fts WHERE messages_fts MATCH ?",
-                params!["supercalifragilistic"],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count_new, 1, "ai trigger must index new inserts");
-
-        // DELETE trigger: removing a row should drop it from the index.
-        conn.execute("DELETE FROM messages WHERE id = 'm3'", [])
-            .unwrap();
-        let count_after_del: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages_fts WHERE messages_fts MATCH ?",
-                params!["supercalifragilistic"],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(count_after_del, 0, "ad trigger must remove on delete");
-
-        // UPDATE trigger: changing content should re-index.
-        conn.execute(
-            "UPDATE messages SET content = ? WHERE id = ?",
-            params!["zucchini", "m2"],
-        )
-        .unwrap();
-        let count_old_term: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages_fts WHERE messages_fts MATCH ?",
-                params!["got"],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(
-            count_old_term, 0,
-            "au trigger must remove old content from index"
-        );
-        let count_new_term: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM messages_fts WHERE messages_fts MATCH ?",
-                params!["zucchini"],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(
-            count_new_term, 1,
-            "au trigger must add new content to index"
-        );
-
-        // ---- v8: knowledge bases + chunks ----
-        apply_through(&conn, &mut applied, 8);
-        conn.execute(
-            "INSERT INTO knowledge_bases (id, name, provider_id, embed_model, dim, created_at) VALUES (?,?,?,?,?,?)",
-            params!["kb1", "Docs", "prov1", "text-embedding-3-small", 1536_i64, 1500_i64],
-        )
-        .unwrap();
-        conn.execute(
-            "INSERT INTO knowledge_chunks (id, kb_id, doc_id, source, text, embedding, created_at) VALUES (?,?,?,?,?,?,?)",
-            params!["ch1", "kb1", "doc1", "note.md", "hello chunk", "[0.1,0.2,0.3]", 1500_i64],
-        )
-        .unwrap();
-        let chunk_count: i64 = conn
-            .query_row(
-                "SELECT COUNT(*) FROM knowledge_chunks WHERE kb_id = 'kb1'",
-                [],
-                |r| r.get(0),
-            )
-            .unwrap();
-        assert_eq!(chunk_count, 1, "v8 chunk insert must round-trip");
-
-        // ON DELETE CASCADE: dropping the KB removes its chunks (FKs are ON in
-        // this test connection).
-        conn.execute("DELETE FROM knowledge_bases WHERE id = 'kb1'", [])
-            .unwrap();
-        let orphan_chunks: i64 = conn
-            .query_row("SELECT COUNT(*) FROM knowledge_chunks", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(
-            orphan_chunks, 0,
-            "v8 chunks must cascade-delete with the KB"
-        );
-    }
-
-    /// Independent of the upgrade path: running the WHOLE chain on an empty
-    /// DB should also succeed and leave a usable schema. Catches the
-    /// degenerate "fresh install" case the upgrade test doesn't cover.
-    #[test]
-    fn fresh_install_chain_runs_clean() {
-        let tmp = tempfile::NamedTempFile::new().unwrap();
-        let conn = Connection::open(tmp.path()).unwrap();
-        for m in migrations() {
-            conn.execute_batch(m.sql)
-                .unwrap_or_else(|e| panic!("fresh migration v{} failed: {e}", m.version));
-        }
-        // Sanity: FTS5 virtual table exists and is queryable.
-        let n: i64 = conn
-            .query_row("SELECT COUNT(*) FROM messages_fts", [], |r| r.get(0))
-            .unwrap();
-        assert_eq!(n, 0);
-    }
-}

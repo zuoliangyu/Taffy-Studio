@@ -59,7 +59,7 @@
 ```
 
 > 前端通过编译期变量 `__IS_TAURI__` 自动切换 API 层（Tauri `invoke` ↔ HTTP `fetch`/SSE），组件代码 100% 复用。
-> 现状：`taffy-core`、前端 `api` 抽象层、以及 `taffy-web`(axum) 的 LLM/embed 端点（含 SSE、单用户 env token）均已落地，`webApi.ts` 的 LLM 面已实现；会话/KV/密钥/MCP 等数据层语义端点进行中（见[路线图](#-路线图)）。
+> 现状：`taffy-core`（含 SQLite 数据层）、前端 `api` 抽象层、`taffy-web`(axum) 均已落地 —— 会话/消息/KV 已是两端共用的**语义端点**，桌面已移除 plugin-sql/store。搜索 / RAG / 导入导出的语义化、移动端密钥仍在进行中（见[路线图](#-路线图)）。
 
 ### 📚 配套文档
 
@@ -271,8 +271,10 @@ app/
 - [x] **知识库 / RAG** —— 本地向量库（暴力余弦）、按会话注入检索
 - [x] **共享 Rust 核心** —— 把平台无关逻辑（LLM / 嵌入 / DTO）拆出到 `crates/taffy-core`
 - [x] **前端后端抽象层** —— `services/api.ts` + `tauriApi.ts` + `webApi.ts`，UI 与传输彻底解耦
-- [x] **Web 外壳骨架** —— `taffy-web`(axum + rust-embed) + 单用户 env token + LLM/embed 端点(SSE)，`webApi.ts` 对应实现已落地
-- [ ] **自托管 Web 服务完整化**（Docker）—— 数据层（会话/消息/KV）语义端点下沉到核心 + 密钥/MCP，浏览器端到端可用
+- [x] **Web 外壳骨架** —— `taffy-web`(axum + rust-embed) + 单用户 env token + LLM/embed 端点(SSE)
+- [x] **数据层下沉到核心** —— SQLite 迁移 / 会话 / 消息 / KV 移入 `taffy-core::db`(rusqlite)，桌面与 Web 共用语义端点；桌面已移除 plugin-sql/store
+- [x] **Web Docker 镜像** —— `docker/web.Dockerfile` + `scripts/dev-docker.{ps1,sh}`（本地一键起 web 服务测试）
+- [ ] **Web 端到端完整化** —— 搜索 / RAG / 导入导出的语义端点（当前桌面走低层 SQL 通路、Web 暂不可用）
 - [ ] 流式 Markdown 稳定性（表格/代码半渲染时不闪烁）
 - [ ] agentic 工具调用循环内的逐 token 流式（目前是按轮）
 - [ ] 移动端密钥存储用 Stronghold / Android Keystore / iOS Keychain
