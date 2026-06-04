@@ -27,6 +27,8 @@ type Shared = Arc<taffy_core::Db>;
 /// Shared MCP registry, threaded to handlers via `Extension` (the `State` slot
 /// is taken by the DB). One registry per server process, like the desktop shell.
 type Mcp = Arc<McpState>;
+/// Shared skill store, also threaded via `Extension`.
+type Skills = Arc<taffy_core::SkillStore>;
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "taffy-web", about = "Taffy Studio — self-hosted web server")]
@@ -140,18 +142,20 @@ async fn chat_complete_handler(
 
 async fn chat_stream_handler(
     Extension(mcp): Extension<Mcp>,
+    Extension(skills): Extension<Skills>,
     Json(mut req): Json<ChatRequest>,
 ) -> Sse<impl Stream<Item = Result<Event, axum::Error>>> {
     req.api_key = key_for(&req.provider, &req.api_key);
-    // Agentic path when tools are attached on a tool-capable provider; otherwise
-    // a plain token stream. Both are core `Stream`s — box to one type. The
-    // browser cancels by aborting the fetch, which drops this stream server-side.
+    // Agentic path when tools or skills are attached on a tool-capable provider;
+    // otherwise a plain token stream. Both are core `Stream`s — box to one type.
+    // The browser cancels by aborting the fetch, which drops this stream.
     let kind = taffy_core::llm::provider_kind(&req.provider);
     let use_tools = matches!(kind, "openai" | "anthropic")
-        && req.tools.as_ref().is_some_and(|t| !t.is_empty());
+        && (req.tools.as_ref().is_some_and(|t| !t.is_empty())
+            || !req.enabled_skills.is_empty());
     let events: std::pin::Pin<Box<dyn Stream<Item = StreamEvent> + Send>> = if use_tools {
         let tools = req.tools.clone().unwrap_or_default();
-        Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp))
+        Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp, skills))
     } else {
         Box::pin(taffy_core::llm::chat_stream(req))
     };
@@ -213,6 +217,48 @@ async fn mcp_call_h(
         .await
         .map(Json)
         .map_err(ise)
+}
+
+// ---------- Skills ----------
+
+async fn skill_list_h(Extension(skills): Extension<Skills>) -> Json<Vec<taffy_core::SkillMeta>> {
+    Json(skills.list())
+}
+
+#[derive(Deserialize)]
+struct SkillMarkdown {
+    content: String,
+}
+
+async fn skill_import_md_h(
+    Extension(skills): Extension<Skills>,
+    Json(b): Json<SkillMarkdown>,
+) -> Result<Json<taffy_core::SkillMeta>, (StatusCode, String)> {
+    skills.import_markdown(&b.content).map(Json).map_err(ise)
+}
+
+/// ZIP import takes the raw request body (application/zip).
+async fn skill_import_zip_h(
+    Extension(skills): Extension<Skills>,
+    body: axum::body::Bytes,
+) -> Result<Json<taffy_core::SkillMeta>, (StatusCode, String)> {
+    skills.import_zip(&body).map(Json).map_err(ise)
+}
+
+async fn skill_delete_h(
+    Extension(skills): Extension<Skills>,
+    Path(name): Path<String>,
+) -> Result<(), (StatusCode, String)> {
+    skills.delete(&name).map_err(ise)
+}
+
+async fn skill_read_h(
+    Extension(skills): Extension<Skills>,
+    Path(name): Path<String>,
+) -> Result<String, (StatusCode, String)> {
+    skills
+        .read_body(&name)
+        .ok_or((StatusCode::NOT_FOUND, format!("skill '{name}' not found")))
 }
 
 // ---------- RAG (knowledge bases) ----------
@@ -551,6 +597,12 @@ async fn main() {
     let db: Shared = Arc::new(taffy_core::Db::open(&db_path).expect("failed to open database"));
     // One MCP registry for the process, shared with handlers via Extension.
     let mcp: Mcp = Arc::new(McpState::default());
+    // Skill packages live in a `skills/` dir beside the DB.
+    let skills_root = std::path::Path::new(&db_path)
+        .parent()
+        .map(|p| p.join("skills"))
+        .unwrap_or_else(taffy_core::default_skills_root);
+    let skills: Skills = Arc::new(taffy_core::SkillStore::new(skills_root));
 
     let api = Router::new()
         .route("/api/health", get(health_handler))
@@ -558,6 +610,9 @@ async fn main() {
         .route("/api/chat/complete", post(chat_complete_handler))
         .route("/api/chat/stream", post(chat_stream_handler))
         .route("/api/embed", post(embed_handler))
+        .route("/api/skills", get(skill_list_h).post(skill_import_md_h))
+        .route("/api/skills/import-zip", post(skill_import_zip_h))
+        .route("/api/skills/{name}", get(skill_read_h).delete(skill_delete_h))
         .route("/api/mcp/connect", post(mcp_connect_h))
         .route("/api/mcp/disconnect", post(mcp_disconnect_h))
         .route("/api/mcp/tools", get(mcp_tools_h))
@@ -600,6 +655,7 @@ async fn main() {
         .merge(static_routes)
         .layer(CorsLayer::permissive())
         .layer(axum::Extension(mcp))
+        .layer(axum::Extension(skills))
         .layer(axum::Extension(AppToken(config.token.clone())));
 
     let addr = format!("{}:{}", config.host, config.port);

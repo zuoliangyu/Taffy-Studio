@@ -154,6 +154,7 @@ async fn chat_stream(
     on_event: Channel<StreamEvent>,
     state: State<'_, Cancellation>,
     mcp_state: State<'_, Arc<McpState>>,
+    skills: State<'_, Arc<taffy_core::SkillStore>>,
 ) -> Result<(), String> {
     // Register a cancellation token if the caller gave us a stream_id. The flag
     // is polled between events below; flipping it (via `cancel_stream`) makes us
@@ -171,14 +172,16 @@ async fn chat_stream(
     // them to a single type so the consume loop is written once.
     let kind = provider_kind(&req.provider);
     let use_tools = matches!(kind, "openai" | "anthropic")
-        && req.tools.as_ref().is_some_and(|t| !t.is_empty());
+        && (req.tools.as_ref().is_some_and(|t| !t.is_empty())
+            || !req.enabled_skills.is_empty());
 
     let mut stream: std::pin::Pin<
         Box<dyn futures_util::Stream<Item = StreamEvent> + Send>,
     > = if use_tools {
         let tools = req.tools.clone().unwrap_or_default();
         let mcp = mcp_state.inner().clone();
-        Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp))
+        let sk = skills.inner().clone();
+        Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp, sk))
     } else {
         Box::pin(taffy_core::llm::chat_stream(req))
     };
@@ -724,6 +727,47 @@ fn rag_search(
     db.search_knowledge(&kb_id, &embedding, top_k)
 }
 
+// ---------- Skills (SKILL.md capability packages) ----------
+
+#[tauri::command]
+fn skill_list(skills: State<'_, Arc<taffy_core::SkillStore>>) -> Vec<taffy_core::SkillMeta> {
+    skills.list()
+}
+
+#[tauri::command]
+fn skill_import_markdown(
+    skills: State<'_, Arc<taffy_core::SkillStore>>,
+    content: String,
+) -> Result<taffy_core::SkillMeta, String> {
+    skills.import_markdown(&content)
+}
+
+#[tauri::command]
+fn skill_import_zip(
+    skills: State<'_, Arc<taffy_core::SkillStore>>,
+    bytes: Vec<u8>,
+) -> Result<taffy_core::SkillMeta, String> {
+    skills.import_zip(&bytes)
+}
+
+#[tauri::command]
+fn skill_delete(
+    skills: State<'_, Arc<taffy_core::SkillStore>>,
+    name: String,
+) -> Result<(), String> {
+    skills.delete(&name)
+}
+
+#[tauri::command]
+fn skill_read(
+    skills: State<'_, Arc<taffy_core::SkillStore>>,
+    name: String,
+) -> Result<String, String> {
+    skills
+        .read_body(&name)
+        .ok_or_else(|| format!("skill '{name}' not found"))
+}
+
 // ---------- Full-text search + JSON export/import ----------
 
 #[tauri::command]
@@ -791,6 +835,9 @@ pub fn run() {
             }
             let db = taffy_core::Db::open(&path.to_string_lossy())?;
             app.manage(db);
+            // Skill packages live in a `skills/` dir beside the DB.
+            let skills_root = db_dir(app.handle())?.join("skills");
+            app.manage(Arc::new(taffy_core::SkillStore::new(skills_root)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -841,6 +888,12 @@ pub fn run() {
             rag_delete_doc,
             rag_add_chunks,
             rag_search,
+            // skills (taffy-core::skills)
+            skill_list,
+            skill_import_markdown,
+            skill_import_zip,
+            skill_delete,
+            skill_read,
             // search + export/import (taffy-core::db)
             search_messages,
             export_conversations,

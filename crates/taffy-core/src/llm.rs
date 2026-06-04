@@ -75,6 +75,10 @@ pub struct ChatRequest {
     /// tool-use loop instead of a plain stream.
     #[serde(default)]
     pub tools: Option<Vec<ToolSpec>>,
+    /// Skill names enabled this turn. When non-empty, the agentic loop adds the
+    /// `use_skill` tool plus a progressive-disclosure system block listing them.
+    #[serde(default)]
+    pub enabled_skills: Vec<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -706,12 +710,109 @@ fn tool_server_for<'a>(tools: &'a [ToolSpec], name: &str) -> Option<&'a ToolSpec
     tools.iter().find(|t| t.name == name)
 }
 
+/// The built-in skills tool, and the sentinel server id we tag it with so the
+/// UI / dispatch can tell it apart from MCP tools.
+const USE_SKILL: &str = "use_skill";
+const BUILTIN_SERVER: &str = "__builtin__";
+
+/// Skills available to `use_skill` this turn (loaded once per agentic run).
+struct SkillCtx {
+    store: std::sync::Arc<crate::skills::SkillStore>,
+    metas: Vec<crate::skills::SkillMeta>,
+}
+
+fn build_skill_ctx(
+    store: &std::sync::Arc<crate::skills::SkillStore>,
+    enabled: &[String],
+) -> Option<SkillCtx> {
+    if enabled.is_empty() {
+        return None;
+    }
+    let metas: Vec<_> = store
+        .list()
+        .into_iter()
+        .filter(|m| enabled.iter().any(|n| n == &m.name))
+        .collect();
+    if metas.is_empty() {
+        None
+    } else {
+        Some(SkillCtx { store: store.clone(), metas })
+    }
+}
+
+/// Progressive-disclosure system block: only name + description go into context;
+/// the full SKILL.md loads on demand when the model calls `use_skill`.
+fn available_skills_prompt(metas: &[crate::skills::SkillMeta]) -> String {
+    let mut s = String::from(
+        "**Skills**\nYou have access to the following skills. Use the `use_skill` \
+         tool to load a skill's instructions when the user's request matches one.\n\
+         <available_skills>\n",
+    );
+    for m in metas {
+        s.push_str("  <skill>\n");
+        s.push_str(&format!("    <name>{}</name>\n", m.name));
+        s.push_str(&format!("    <description>{}</description>\n", m.description));
+        s.push_str("  </skill>\n");
+    }
+    s.push_str("</available_skills>");
+    s
+}
+
+fn use_skill_spec() -> ToolSpec {
+    ToolSpec {
+        server_id: BUILTIN_SERVER.to_string(),
+        name: USE_SKILL.to_string(),
+        description: "Load and apply a skill to get specialized instructions or \
+             capabilities. Call this tool when the user's request matches one of the \
+             available skills."
+            .to_string(),
+        input_schema: serde_json::json!({
+            "type": "object",
+            "properties": {
+                "name": { "type": "string", "description": "The name of the skill to use" },
+                "path": {
+                    "type": "string",
+                    "description": "Optional relative path to a file inside the skill directory. Omit to read the default SKILL.md instructions. Only use paths from Markdown links in the SKILL.md content; do not guess paths."
+                }
+            },
+            "required": ["name"]
+        }),
+    }
+}
+
+/// Run `use_skill`: read the skill's SKILL.md body (or a referenced file). Never
+/// executes anything — just returns text to inject as the tool result.
+fn exec_use_skill(ctx: Option<&SkillCtx>, args: &serde_json::Value) -> String {
+    let Some(ctx) = ctx else {
+        return "ERROR: skills are not available".to_string();
+    };
+    let name = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+    if name.is_empty() {
+        return "ERROR: use_skill requires a 'name'".to_string();
+    }
+    if !ctx.metas.iter().any(|m| m.name == name) {
+        let avail: Vec<&str> = ctx.metas.iter().map(|m| m.name.as_str()).collect();
+        return format!("ERROR: skill '{name}' is not enabled. Available: {}", avail.join(", "));
+    }
+    match args.get("path").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        None => ctx
+            .store
+            .read_body(name)
+            .unwrap_or_else(|| format!("ERROR: skill '{name}' has no SKILL.md")),
+        Some(p) => ctx.store.read_file(name, p).unwrap_or_else(|e| format!("ERROR: {e}")),
+    }
+}
+
 async fn exec_tool(
     tools: &[ToolSpec],
     mcp: &crate::mcp::McpState,
+    skills: Option<&SkillCtx>,
     name: &str,
     args: serde_json::Value,
 ) -> String {
+    if name == USE_SKILL {
+        return exec_use_skill(skills, &args);
+    }
     match tool_server_for(tools, name) {
         Some(t) => crate::mcp::call_tool(mcp, &t.server_id, name, args)
             .await
@@ -919,8 +1020,28 @@ pub fn agentic_stream(
     req: ChatRequest,
     tools: Vec<ToolSpec>,
     mcp: std::sync::Arc<crate::mcp::McpState>,
+    skills: std::sync::Arc<crate::skills::SkillStore>,
 ) -> impl Stream<Item = StreamEvent> {
     async_stream::stream! {
+        let mut req = req;
+        let mut tools = tools;
+
+        // Skills: if any are enabled this turn, surface them as the `use_skill`
+        // tool + a progressive-disclosure system block. They compose with MCP
+        // tools — the model loads a skill's instructions, then acts using tools.
+        let skill_ctx = build_skill_ctx(&skills, &req.enabled_skills);
+        if let Some(ctx) = &skill_ctx {
+            req.messages.insert(
+                0,
+                ChatMessage {
+                    role: "system".to_string(),
+                    content: available_skills_prompt(&ctx.metas),
+                    attachments: Vec::new(),
+                },
+            );
+            tools.push(use_skill_spec());
+        }
+
         let client = match reqwest::Client::builder().build() {
             Ok(c) => c,
             Err(e) => {
@@ -1052,7 +1173,7 @@ pub fn agentic_stream(
                         name: name.clone(),
                         args: input.to_string(),
                     };
-                    let out = exec_tool(&tools, &mcp, &name, input).await;
+                    let out = exec_tool(&tools, &mcp, skill_ctx.as_ref(), &name, input).await;
                     yield StreamEvent::ToolResult {
                         id: id.clone(),
                         name: name.clone(),
@@ -1178,7 +1299,7 @@ pub fn agentic_stream(
                     };
                     let args_val: serde_json::Value =
                         serde_json::from_str(&args_str).unwrap_or(serde_json::json!({}));
-                    let out = exec_tool(&tools, &mcp, &name, args_val).await;
+                    let out = exec_tool(&tools, &mcp, skill_ctx.as_ref(), &name, args_val).await;
                     yield StreamEvent::ToolResult {
                         id: id.clone(),
                         name: name.clone(),

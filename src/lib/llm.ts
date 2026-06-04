@@ -47,6 +47,10 @@ export interface ChatRequest {
   /** MCP-backed tools the model may call this turn. When present + non-empty
    *  on OpenAI/Anthropic, Rust runs the agentic tool-use loop. */
   tools?: ToolSpec[]
+  /** Skill names enabled this turn. When non-empty (on OpenAI/Anthropic), Rust
+   *  adds the built-in `use_skill` tool + a progressive-disclosure system block.
+   *  Also triggers the agentic loop even without MCP tools. */
+  enabledSkills?: string[]
 }
 
 export interface ChatResponse {
