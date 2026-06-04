@@ -257,7 +257,7 @@ Taffy Studio draws design and architectural inspiration from:
 
 - **[Cherry Studio](https://github.com/CherryHQ/cherry-studio)** — AI workstation feature inventory (AGPL-3.0).
 - **[Kelivo](https://github.com/Chevey339/kelivo)** — Flutter LLM client, mobile UX reference.
-- **[EK-OmniProbe](#)** — glassmorphism UI design language ported to chat.
+- **[EK-OmniProbe](https://github.com/EmbeddedKitOrg/EK-OmniProbe)** — glassmorphism UI design language ported to chat.
 - **[Tauri](https://v2.tauri.app/)** — the shell that makes 5-platform deployment realistic.
 
 > Source code in this repo is original; the projects above are listed because their public ideas, file layouts, or visual languages informed decisions here.

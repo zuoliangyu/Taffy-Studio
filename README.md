@@ -257,7 +257,7 @@ Taffy Studio 的设计与架构受以下项目启发：
 
 - **[Cherry Studio](https://github.com/CherryHQ/cherry-studio)** —— AI 工作站功能清单（AGPL-3.0）。
 - **[Kelivo](https://github.com/Chevey339/kelivo)** —— Flutter 大模型客户端，移动端 UX 参考。
-- **[EK-OmniProbe](#)** —— 移植到聊天界面的玻璃拟态设计语言。
+- **[EK-OmniProbe](https://github.com/EmbeddedKitOrg/EK-OmniProbe)** —— 移植到聊天界面的玻璃拟态设计语言。
 - **[Tauri](https://v2.tauri.app/)** —— 让五端部署变得现实的外壳。
 
 > 本仓库源码均为原创；上述项目仅作致谢 —— 它们公开的思路、文件结构或视觉语言为这里的取舍提供了参考。
