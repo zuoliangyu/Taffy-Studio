@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Self-hosted web/server image for Taffy Studio.
 #
 # Three stages: build the React frontend (web bundle), build the taffy-web
@@ -26,12 +27,19 @@ COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
 COPY src-tauri/ src-tauri/
 COPY --from=frontend /app/dist ./dist
-RUN cargo build -p taffy-web --release
+# Cache the cargo registry + target dir across builds so iterative rebuilds
+# don't recompile every dependency. The target dir is a cache mount (not part
+# of the layer), so copy the binary out to a real path before the stage ends.
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=/usr/local/cargo/git \
+    --mount=type=cache,target=/app/target \
+    cargo build -p taffy-web --release && \
+    cp /app/target/release/taffy-web /usr/local/bin/taffy-web
 
 # ---- runtime ----
 FROM alpine:latest
 RUN apk add --no-cache ca-certificates
-COPY --from=backend /app/target/release/taffy-web /usr/local/bin/taffy-web
+COPY --from=backend /usr/local/bin/taffy-web /usr/local/bin/taffy-web
 EXPOSE 8787
 VOLUME ["/data"]
 # Provider keys come from the environment (TAFFY_API_KEY / TAFFY_OPENAI_API_KEY
