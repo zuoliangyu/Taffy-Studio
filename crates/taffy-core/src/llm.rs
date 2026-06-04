@@ -720,17 +720,197 @@ async fn exec_tool(
     }
 }
 
-/// Send a request and parse the JSON body, mapping transport / HTTP / parse
-/// failures to a single error string. The caller yields a `StreamEvent::Error`
-/// with it (we can't `yield` from a plain async fn).
-async fn read_json(resp: Result<reqwest::Response, String>) -> Result<serde_json::Value, String> {
+/// Read the round's response into the JSON shape the agentic loop parses.
+///
+/// The loop asks for `stream: false`, so a conformant provider returns a JSON
+/// body we parse directly. But some gateways ignore that and stream an SSE body
+/// anyway (deltas, including tool-call fragments). When that happens we
+/// accumulate the SSE frames back into the same non-streaming shape
+/// (`{choices:[{message}]}` for OpenAI, `{content, stop_reason}` for Anthropic),
+/// so the rest of the loop is unchanged. Maps transport/HTTP/parse failures to a
+/// single error string the caller yields as `StreamEvent::Error`.
+async fn read_json(
+    resp: Result<reqwest::Response, String>,
+    kind: &str,
+) -> Result<serde_json::Value, String> {
     let resp = resp?;
     let status = resp.status();
     if !status.is_success() {
         let text = resp.text().await.unwrap_or_default();
         return Err(format!("HTTP {status}: {text}"));
     }
+    let is_sse = resp
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|c| c.contains("text/event-stream"));
+    if is_sse {
+        let text = resp.text().await.map_err(|e| e.to_string())?;
+        return Ok(if kind == "anthropic" {
+            accumulate_anthropic_sse(&text)
+        } else {
+            accumulate_openai_sse(&text)
+        });
+    }
     resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Rebuild an OpenAI non-streaming `{choices:[{message}]}` from an SSE body.
+/// Handles both true deltas (`choices[0].delta`, tool-call fragments keyed by
+/// `index`) and a full message echoed in one frame (`choices[0].message`).
+fn accumulate_openai_sse(text: &str) -> serde_json::Value {
+    let mut content = String::new();
+    let mut has_content = false;
+    // (id, name, arguments) per tool-call index.
+    let mut tcs: Vec<(String, String, String)> = Vec::new();
+    let mut finish: Option<String> = None;
+    let mut full_message: Option<serde_json::Value> = None;
+
+    for data in sse_data_frames(text) {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) else {
+            continue;
+        };
+        let Some(choice) = v.pointer("/choices/0") else {
+            continue;
+        };
+        if let Some(fr) = choice.get("finish_reason").and_then(|x| x.as_str()) {
+            finish = Some(fr.to_string());
+        }
+        if let Some(msg) = choice.get("message") {
+            full_message = Some(msg.clone()); // a non-streamed message in one frame
+            continue;
+        }
+        let Some(delta) = choice.get("delta") else {
+            continue;
+        };
+        if let Some(c) = delta.get("content").and_then(|x| x.as_str()) {
+            content.push_str(c);
+            has_content = true;
+        }
+        if let Some(arr) = delta.get("tool_calls").and_then(|x| x.as_array()) {
+            for tc in arr {
+                let idx = tc.get("index").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+                while tcs.len() <= idx {
+                    tcs.push((String::new(), String::new(), String::new()));
+                }
+                if let Some(id) = tc.get("id").and_then(|x| x.as_str()) {
+                    if !id.is_empty() {
+                        tcs[idx].0 = id.to_string();
+                    }
+                }
+                if let Some(n) = tc.pointer("/function/name").and_then(|x| x.as_str()) {
+                    if !n.is_empty() {
+                        tcs[idx].1 = n.to_string();
+                    }
+                }
+                if let Some(a) = tc.pointer("/function/arguments").and_then(|x| x.as_str()) {
+                    tcs[idx].2.push_str(a);
+                }
+            }
+        }
+    }
+
+    if let Some(msg) = full_message {
+        return serde_json::json!({ "choices": [{ "message": msg, "finish_reason": finish }] });
+    }
+    let tool_calls: Vec<serde_json::Value> = tcs
+        .into_iter()
+        .filter(|(_, name, _)| !name.is_empty())
+        .map(|(id, name, args)| {
+            serde_json::json!({
+                "id": id,
+                "type": "function",
+                "function": { "name": name, "arguments": if args.is_empty() { "{}".into() } else { args } },
+            })
+        })
+        .collect();
+    let mut message = serde_json::json!({ "role": "assistant" });
+    message["content"] = if has_content {
+        serde_json::Value::String(content)
+    } else {
+        serde_json::Value::Null
+    };
+    if !tool_calls.is_empty() {
+        message["tool_calls"] = serde_json::Value::Array(tool_calls);
+    }
+    serde_json::json!({ "choices": [{ "message": message, "finish_reason": finish }] })
+}
+
+/// Rebuild an Anthropic non-streaming `{content:[...], stop_reason}` from an SSE
+/// body of `content_block_*` / `message_delta` events.
+fn accumulate_anthropic_sse(text: &str) -> serde_json::Value {
+    // (kind, text, id, name, partial_json) per content-block index.
+    let mut blocks: Vec<(String, String, String, String, String)> = Vec::new();
+    let mut stop_reason: Option<String> = None;
+
+    for data in sse_data_frames(text) {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) else {
+            continue;
+        };
+        match v.get("type").and_then(|t| t.as_str()) {
+            Some("content_block_start") => {
+                let idx = v.get("index").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+                while blocks.len() <= idx {
+                    blocks.push((String::new(), String::new(), String::new(), String::new(), String::new()));
+                }
+                let cb = v.get("content_block");
+                let kind = cb.and_then(|c| c.get("type")).and_then(|x| x.as_str()).unwrap_or("text");
+                blocks[idx].0 = kind.to_string();
+                if let Some(id) = cb.and_then(|c| c.get("id")).and_then(|x| x.as_str()) {
+                    blocks[idx].2 = id.to_string();
+                }
+                if let Some(n) = cb.and_then(|c| c.get("name")).and_then(|x| x.as_str()) {
+                    blocks[idx].3 = n.to_string();
+                }
+            }
+            Some("content_block_delta") => {
+                let idx = v.get("index").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
+                if idx >= blocks.len() {
+                    continue;
+                }
+                let delta = v.get("delta");
+                if let Some(t) = delta.and_then(|d| d.get("text")).and_then(|x| x.as_str()) {
+                    blocks[idx].1.push_str(t);
+                }
+                if let Some(p) = delta.and_then(|d| d.get("partial_json")).and_then(|x| x.as_str()) {
+                    blocks[idx].4.push_str(p);
+                }
+            }
+            Some("message_delta") => {
+                if let Some(sr) = v.pointer("/delta/stop_reason").and_then(|x| x.as_str()) {
+                    stop_reason = Some(sr.to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+
+    let content: Vec<serde_json::Value> = blocks
+        .into_iter()
+        .map(|(kind, text, id, name, partial)| {
+            if kind == "tool_use" {
+                let input = serde_json::from_str::<serde_json::Value>(&partial)
+                    .unwrap_or_else(|_| serde_json::json!({}));
+                serde_json::json!({ "type": "tool_use", "id": id, "name": name, "input": input })
+            } else {
+                serde_json::json!({ "type": "text", "text": text })
+            }
+        })
+        .collect();
+    serde_json::json!({ "content": content, "stop_reason": stop_reason })
+}
+
+/// Iterate the `data:` payloads of an SSE body (skipping blanks / `[DONE]`).
+fn sse_data_frames(text: &str) -> impl Iterator<Item = String> + '_ {
+    text.lines().filter_map(|line| {
+        let line = line.trim_end_matches('\r');
+        let data = line.strip_prefix("data:")?.trim();
+        if data.is_empty() || data == "[DONE]" {
+            None
+        } else {
+            Some(data.to_string())
+        }
+    })
 }
 
 /// Agentic counterpart to `chat_stream`: drives the MCP tool-use loop and yields
@@ -808,7 +988,7 @@ pub fn agentic_stream(
                     .send()
                     .await
                     .map_err(|e| e.to_string());
-                let json = match read_json(resp).await {
+                let json = match read_json(resp, &kind).await {
                     Ok(j) => j,
                     Err(e) => {
                         yield StreamEvent::Error { message: e };
@@ -939,7 +1119,7 @@ pub fn agentic_stream(
                     .send()
                     .await
                     .map_err(|e| e.to_string());
-                let json = match read_json(resp).await {
+                let json = match read_json(resp, &kind).await {
                     Ok(j) => j,
                     Err(e) => {
                         yield StreamEvent::Error { message: e };
@@ -1118,4 +1298,63 @@ pub async fn embed_texts(req: &EmbedRequest) -> Result<Vec<Vec<f32>>, String> {
         })
         .collect();
     Ok(out)
+}
+
+#[cfg(test)]
+mod agentic_sse_tests {
+    use super::*;
+
+    #[test]
+    fn openai_sse_accumulates_tool_call_deltas() {
+        // tool_call streamed across frames: name in the first, args in pieces.
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"id\":\"call_1\",\"function\":{\"name\":\"get-sum\",\"arguments\":\"\"}}]}}]}\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\"{\\\"a\\\":1\"}}]}}]}\n",
+            "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"index\":0,\"function\":{\"arguments\":\",\\\"b\\\":2}\"}}]}}]}\n",
+            "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\"}]}\n",
+            "data: [DONE]\n",
+        );
+        let v = accumulate_openai_sse(sse);
+        let tc = &v["choices"][0]["message"]["tool_calls"][0];
+        assert_eq!(tc["id"], serde_json::json!("call_1"));
+        assert_eq!(tc["function"]["name"], serde_json::json!("get-sum"));
+        assert_eq!(tc["function"]["arguments"], serde_json::json!("{\"a\":1,\"b\":2}"));
+    }
+
+    #[test]
+    fn openai_sse_accumulates_content() {
+        let sse = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"po\"}}]}\n",
+            "data: {\"choices\":[{\"delta\":{\"content\":\"ng\"}}]}\n",
+            "data: [DONE]\n",
+        );
+        let v = accumulate_openai_sse(sse);
+        assert_eq!(v["choices"][0]["message"]["content"], serde_json::json!("pong"));
+        assert!(v["choices"][0]["message"]["tool_calls"].is_null());
+    }
+
+    #[test]
+    fn openai_sse_full_message_frame() {
+        // some gateways echo a whole non-streamed message in one frame
+        let sse = "data: {\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}\n";
+        let v = accumulate_openai_sse(sse);
+        assert_eq!(v["choices"][0]["message"]["content"], serde_json::json!("hi"));
+    }
+
+    #[test]
+    fn anthropic_sse_accumulates_tool_use() {
+        let sse = concat!(
+            "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"tool_use\",\"id\":\"tu_1\",\"name\":\"get-sum\"}}\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"{\\\"a\\\":1,\"}}\n",
+            "data: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"input_json_delta\",\"partial_json\":\"\\\"b\\\":2}\"}}\n",
+            "data: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n",
+        );
+        let v = accumulate_anthropic_sse(sse);
+        assert_eq!(v["stop_reason"], serde_json::json!("tool_use"));
+        let b = &v["content"][0];
+        assert_eq!(b["type"], serde_json::json!("tool_use"));
+        assert_eq!(b["name"], serde_json::json!("get-sum"));
+        assert_eq!(b["input"]["a"], serde_json::json!(1));
+        assert_eq!(b["input"]["b"], serde_json::json!(2));
+    }
 }
