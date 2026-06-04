@@ -135,20 +135,27 @@ RUN=1 ./scripts/build-web.sh
 
 ## 🗄 Where data / config lives
 
-| Data | Desktop (Tauri) | Server (taffy-web / Docker) |
-|---|---|---|
-| Conversations + messages | `taffy-studio.db` (app config dir) | the DB at `--db-path` (default `./taffy.db`; Docker `/data/taffy.db`) |
-| Settings (language / theme / providers / templates / MCP servers) | `kv` table in the same DB | `kv` table in the same DB |
-| API keys | OS keyring (service `com.taffy.studio`) | env vars `TAFFY_*_API_KEY` (recommended); or the `kv` table if entered in the UI |
-| Auto-backups | `backups/` under the app config dir | none yet — just back up / mount the DB file |
+**The desktop app and the native server binary share one database by default**
+(conversations, messages, settings all together), so you can move between the
+two seamlessly:
 
-Desktop "app config dir" by OS:
+| Data | Desktop (Tauri) | Server (native binary) | Server (Docker) |
+|---|---|---|---|
+| Conversations + messages + settings (kv) | `taffy-studio.db` (app config dir) | the **same** `taffy-studio.db` (shares the desktop DB by default) | `/data/taffy.db` (mounted volume, isolated) |
+| API keys | OS keyring (service `com.taffy.studio`) | env vars `TAFFY_*_API_KEY` (recommended); or the `kv` table if entered in the UI | same |
+| Auto-backups | `backups/` under the app config dir | same | back up / mount the DB file |
+
+The "app config dir" by OS (used by both desktop and the native web binary):
 - Windows: `%APPDATA%\com.taffy.studio\`
 - macOS: `~/Library/Application Support/com.taffy.studio/`
 - Linux: `~/.config/com.taffy.studio/`
 
-> In short: desktop = one `taffy-studio.db` + the OS keyring; server = one DB
-> file (mount `/data` in Docker to persist) + keys from env vars.
+- The DB runs in **WAL mode**, so the desktop app and the web server can safely
+  read/write the same file even if both are open.
+- Want a separate DB for the web server? Override with `--db-path D:\some\taffy.db`
+  (or `TAFFY_DB_PATH`). Docker is already isolated at `/data/taffy.db`.
+- Note: **API keys are not shared** — desktop uses the OS keyring, web uses env
+  vars; conversations / settings / templates / MCP servers are shared.
 
 ## ⚙️ Prerequisites
 

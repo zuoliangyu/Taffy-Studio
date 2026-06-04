@@ -35,9 +35,12 @@ struct Config {
     #[arg(long, default_value_t = 8787, env = "TAFFY_PORT")]
     port: u16,
 
-    /// SQLite database file. In a container, point this at a mounted volume.
-    #[arg(long, default_value = "taffy.db", env = "TAFFY_DB_PATH")]
-    db_path: String,
+    /// SQLite database file. Defaults to the location the desktop app uses, so
+    /// both shells share one config + history
+    /// (config_dir/com.taffy.studio/taffy-studio.db). In a container, point
+    /// this at a mounted volume (the entrypoint passes /data/taffy.db).
+    #[arg(long, env = "TAFFY_DB_PATH")]
+    db_path: Option<String>,
 
     /// Bearer token gating the API (single-user). No auth if unset.
     #[arg(long, env = "TAFFY_TOKEN")]
@@ -328,9 +331,12 @@ async fn main() {
     tracing_subscriber::fmt::init();
     let config = Config::parse();
 
-    let db: Shared = Arc::new(
-        taffy_core::Db::open(&config.db_path).expect("failed to open database"),
-    );
+    // Default to the shared desktop+web database location.
+    let db_path = config
+        .db_path
+        .clone()
+        .unwrap_or_else(taffy_core::default_db_path);
+    let db: Shared = Arc::new(taffy_core::Db::open(&db_path).expect("failed to open database"));
 
     let api = Router::new()
         .route("/api/health", get(health_handler))
@@ -371,7 +377,7 @@ async fn main() {
         .await
         .expect("failed to bind address");
 
-    tracing::info!("Taffy Studio web server on http://{addr}  (db: {})", config.db_path);
+    tracing::info!("Taffy Studio web server on http://{addr}  (db: {db_path})");
     if config.token.is_some() {
         tracing::info!("Auth enabled (Bearer token required)");
     } else {

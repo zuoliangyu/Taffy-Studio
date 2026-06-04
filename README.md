@@ -122,19 +122,22 @@ RUN=1 ./scripts/build-web.sh
 
 ## 🗄 数据 / 配置存储位置
 
-| 内容 | 桌面端（Tauri） | 服务器版（taffy-web / Docker） |
-|---|---|---|
-| 会话 + 消息 | `taffy-studio.db`（应用配置目录） | `--db-path` 指定的库（默认 `./taffy.db`；Docker 为 `/data/taffy.db`） |
-| 设置（语言 / 主题 / 服务商 / 模板 / MCP 服务器） | 同一个库里的 `kv` 表 | 同一个库里的 `kv` 表 |
-| API 密钥 | 操作系统密钥环（服务名 `com.taffy.studio`） | 环境变量 `TAFFY_*_API_KEY`（推荐）；若在界面里填写则存入库的 `kv` 表 |
-| 自动备份 | 应用配置目录下的 `backups/` | 暂无 —— 直接备份 / 挂载那个 DB 文件即可 |
+**桌面端与"服务器版原生二进制"默认共用同一个库**（会话、消息、设置都在一起，互通），方便在两种形态间无缝切换：
 
-桌面端「应用配置目录」随系统：
+| 内容 | 桌面端（Tauri） | 服务器版（原生二进制） | 服务器版（Docker） |
+|---|---|---|---|
+| 会话 + 消息 + 设置（kv 表） | `taffy-studio.db`（应用配置目录） | **同一个** `taffy-studio.db`（默认共用桌面端的库） | `/data/taffy.db`（挂卷，独立隔离） |
+| API 密钥 | 操作系统密钥环（服务名 `com.taffy.studio`） | 环境变量 `TAFFY_*_API_KEY`（推荐）；界面填写则存入库的 `kv` 表 | 同左 |
+| 自动备份 | 应用配置目录下的 `backups/` | 同左 | 直接备份 / 挂载那个 DB 文件 |
+
+「应用配置目录」随系统（桌面与原生 web 二进制都用这里）：
 - Windows：`%APPDATA%\com.taffy.studio\`
 - macOS：`~/Library/Application Support/com.taffy.studio/`
 - Linux：`~/.config/com.taffy.studio/`
 
-> 一句话：桌面端 = 一个 `taffy-studio.db` + 系统密钥环；服务器版 = 一个 DB 文件（容器里挂 `/data` 卷即持久化）+ 环境变量里的密钥。
+- 数据库开了 **WAL 模式**，桌面端和 web 服务即使同时开着、读写同一文件也安全。
+- 想让 web 用独立的库？加 `--db-path D:\some\taffy.db`（或环境变量 `TAFFY_DB_PATH`）覆盖即可。Docker 默认就是隔离的 `/data/taffy.db`。
+- 注意：**API 密钥不共享** —— 桌面端在系统密钥环、web 在环境变量；会话/设置/模板/MCP 服务器配置则是共享的。
 
 ## ⚙️ 前置条件
 

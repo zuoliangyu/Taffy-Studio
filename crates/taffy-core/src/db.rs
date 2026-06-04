@@ -28,6 +28,24 @@ fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
+/// Tauri bundle identifier — the app config subdir both shells use.
+const APP_DIR: &str = "com.taffy.studio";
+const DB_FILE: &str = "taffy-studio.db";
+
+/// Default database location, shared by the desktop and web shells so they use
+/// ONE config + history. Resolves to the same place Tauri's `app_config_dir`
+/// does (`dirs::config_dir()/com.taffy.studio/taffy-studio.db`):
+///   - Windows: %APPDATA%\com.taffy.studio\taffy-studio.db
+///   - macOS:   ~/Library/Application Support/com.taffy.studio/taffy-studio.db
+///   - Linux:   ~/.config/com.taffy.studio/taffy-studio.db
+pub fn default_db_path() -> String {
+    let base = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
+    base.join(APP_DIR)
+        .join(DB_FILE)
+        .to_string_lossy()
+        .into_owned()
+}
+
 // ---------- Schema migrations ----------
 //
 // Ported verbatim from the previous tauri-plugin-sql chain so existing
@@ -246,9 +264,21 @@ pub struct Db {
 
 impl Db {
     /// Open (or create) the database at `path` and run pending migrations.
+    /// Creates the parent directory if needed; enables WAL so the desktop and
+    /// web shells can safely share one file.
     pub fn open(path: &str) -> Result<Self, String> {
+        if let Some(parent) = std::path::Path::new(path).parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(e2s)?;
+            }
+        }
         let conn = Connection::open(path).map_err(e2s)?;
-        conn.execute_batch("PRAGMA foreign_keys = ON;").map_err(e2s)?;
+        // WAL + a busy timeout make concurrent access from two processes
+        // (e.g. desktop app + web server on the same file) robust.
+        conn.execute_batch(
+            "PRAGMA journal_mode = WAL; PRAGMA busy_timeout = 5000; PRAGMA foreign_keys = ON;",
+        )
+        .map_err(e2s)?;
         run_migrations(&conn)?;
         Ok(Self { conn: Mutex::new(conn) })
     }

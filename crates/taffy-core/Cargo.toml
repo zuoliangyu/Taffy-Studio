@@ -25,3 +25,6 @@ async-stream = "0.3"
 # Data layer: bundled SQLite (with FTS5) so neither shell needs a system lib.
 rusqlite = { version = "0.32", features = ["bundled"] }
 uuid = { version = "1", features = ["v4"] }
+# Resolve the per-user config dir so the desktop + web shells default to the
+# SAME database location.
+dirs = "6"
