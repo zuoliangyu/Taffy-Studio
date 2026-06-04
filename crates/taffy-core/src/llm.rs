@@ -517,34 +517,75 @@ pub async fn chat_complete(req: &ChatRequest) -> Result<ChatResponse, String> {
         let text = response.text().await.unwrap_or_default();
         return Err(format!("HTTP {}: {}", status, text));
     }
-    let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
 
     let kind = provider_kind(&req.provider);
-    let content = match kind {
-        "anthropic" => {
-            // content is an array: [{type:"text", text:"..."}, ...]
-            json.pointer("/content/0/text")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string()
+
+    // Some gateways ignore `stream: false` and reply with an SSE body anyway
+    // (e.g. proxies that only support streaming). Detect that and reconstruct
+    // the full text from the token deltas instead of failing to parse JSON.
+    let is_sse = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|c| c.contains("text/event-stream"));
+    if is_sse {
+        let mut stream = response.bytes_stream();
+        let mut buffer = String::new();
+        let mut full = String::new();
+        while let Some(chunk) = stream.next().await {
+            let bytes = chunk.map_err(|e| e.to_string())?;
+            buffer.push_str(&String::from_utf8_lossy(&bytes));
+            while let Some(nl) = buffer.find('\n') {
+                let line: String = buffer.drain(..=nl).collect();
+                match parse_sse_line(&line) {
+                    Sse::Other => continue,
+                    Sse::Done => {
+                        return Ok(ChatResponse { content: full, model: req.model.clone() });
+                    }
+                    Sse::Data(data) => {
+                        let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) else {
+                            continue;
+                        };
+                        if is_terminal(kind, &json) {
+                            return Ok(ChatResponse { content: full, model: req.model.clone() });
+                        }
+                        // A gateway echoing a non-streamed answer as SSE puts the
+                        // whole reply in `message.content` (one frame); a real
+                        // stream uses incremental `delta.content`. Accept either.
+                        if let Some(c) = extract_delta(kind, &json) {
+                            full.push_str(&c);
+                        } else if let Some(c) = full_message_content(kind, &json) {
+                            full.push_str(&c);
+                        }
+                    }
+                }
+            }
         }
-        "gemini" => json
-            .pointer("/candidates/0/content/parts/0/text")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-        _ => json
-            .pointer("/choices/0/message/content")
-            .and_then(|v| v.as_str())
-            .unwrap_or("")
-            .to_string(),
-    };
+        return Ok(ChatResponse { content: full, model: req.model.clone() });
+    }
+
+    let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
+
+    let content = full_message_content(kind, &json).unwrap_or_default();
     let model = json
         .get("model")
         .and_then(|v| v.as_str())
         .unwrap_or(&req.model)
         .to_string();
     Ok(ChatResponse { content, model })
+}
+
+/// Pull the assistant's full reply text out of a *non-streaming* response body
+/// (the per-provider shapes). Shared by `chat_complete` and the SSE-fallback
+/// path that handles gateways which stream even when `stream: false`.
+fn full_message_content(kind: &str, json: &serde_json::Value) -> Option<String> {
+    let v = match kind {
+        // content is an array: [{type:"text", text:"..."}, ...]
+        "anthropic" => json.pointer("/content/0/text"),
+        "gemini" => json.pointer("/candidates/0/content/parts/0/text"),
+        _ => json.pointer("/choices/0/message/content"),
+    };
+    v.and_then(|v| v.as_str()).map(|s| s.to_string())
 }
 
 /// Transport-agnostic streaming completion. Yields `StreamEvent`s as the
