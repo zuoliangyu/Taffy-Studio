@@ -1,0 +1,115 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Cancel older runs when new commits land on the same branch/PR.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---- Frontend: typecheck + bundle build ----------------------------
+  frontend:
+    name: Frontend (typecheck + build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm exec tsc -b
+
+      - name: Vite build
+        run: pnpm build
+
+      # Required for the Rust step that follows in `rust` job (parallel),
+      # but also useful here: surface bundle-size warnings in the PR log.
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          retention-days: 3
+
+  # ---- Rust: fmt + clippy + check (Linux, deps via apt) --------------
+  rust:
+    name: Rust (fmt + clippy + check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Tauri on Linux needs webkit2gtk and friends even for `cargo check`
+      # because the macro `generate_context!` reads the bundle config and
+      # validates plugin manifests.
+      - name: Install Linux system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            libxdo-dev \
+            patchelf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      # `cargo check` needs a `dist/` to satisfy generate_context!. Build
+      # the frontend here in this job (cheap — no Node deps yet, so we
+      # install pnpm just for this) rather than reaching across jobs.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+
+      - name: cargo fmt --check
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: cargo clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: cargo check
+        working-directory: src-tauri
+        run: cargo check --all-targets
+
+      # Migration upgrade-path smoke test: exercises the v1→v_latest chain
+      # on a temp SQLite, seeds rows at each step, and asserts older data
+      # survives + new columns/triggers/indices wire correctly. The first
+      # thing it caught was a broken v7 FTS5 backfill that had shipped
+      # silently — keep this step running on every PR.
+      - name: cargo test (migration chain)
+        working-directory: src-tauri
+        run: cargo test --all-targets -- --nocapture

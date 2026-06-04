@@ -1,0 +1,47 @@
+version: 2
+updates:
+  # JS dependencies — weekly bumps, grouped by minor/patch to reduce PR noise.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      tauri:
+        patterns:
+          - "@tauri-apps/*"
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react*"
+      markdown:
+        patterns:
+          - "react-markdown"
+          - "remark-*"
+          - "rehype-*"
+          - "react-syntax-highlighter"
+          - "@types/react-syntax-highlighter"
+          - "katex"
+          - "@types/katex"
+          - "mermaid"
+
+  # Cargo (Tauri Rust deps).
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      tauri-plugins:
+        patterns:
+          - "tauri*"
+          - "tauri-plugin-*"
+
+  # GitHub Actions themselves — pin and bump.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

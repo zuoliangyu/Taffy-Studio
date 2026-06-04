@@ -1,0 +1,54 @@
+# Two artifact-producing services + one CI check service.
+#
+#   docker compose run --rm ci         # Run the same checks as GitHub Actions (~5 min, repeatable)
+#   docker compose run --rm linux      # Produce ./dist-linux/{*.deb, *.AppImage}
+#   docker compose run --rm android    # Produce ./dist-android/{*.apk}
+#
+# Tip: the *first* build of `android` is slow (~6 GB SDK+NDK download).
+# Subsequent rebuilds reuse the layer cache. The `ci` image is much smaller
+# (~1.5 GB) and is the one you'll iterate on most often.
+
+services:
+  # Pre-push verification — runs the same checks as .github/workflows/ci.yml.
+  # Bind-mounts the working tree so every run reflects your latest changes
+  # without rebuilding the image. Uses a named volume for ~/.cargo and
+  # node_modules so the second run is fast.
+  ci:
+    build:
+      context: .
+      dockerfile: docker/ci.Dockerfile
+    image: taffy-studio-ci:latest
+    volumes:
+      - .:/app
+      - ci-cargo:/root/.cargo/registry
+      - ci-cargo-git:/root/.cargo/git
+      - ci-target:/app/src-tauri/target
+      - ci-node-modules:/app/node_modules
+
+  linux:
+    build:
+      context: .
+      dockerfile: docker/linux.Dockerfile
+    image: taffy-studio-linux:latest
+    volumes:
+      - ./dist-linux:/out
+
+  android:
+    build:
+      context: .
+      dockerfile: docker/android.Dockerfile
+      args:
+        ANDROID_API: "34"
+        ANDROID_BUILD_TOOLS: "34.0.0"
+        NDK_VERSION: "27.0.12077973"
+    image: taffy-studio-android:latest
+    volumes:
+      - ./dist-android:/out
+      # Optional: mount a release keystore for signed APKs.
+      # - ./keys/release.keystore:/keys/release.keystore:ro
+
+volumes:
+  ci-cargo:
+  ci-cargo-git:
+  ci-target:
+  ci-node-modules:

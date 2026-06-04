@@ -1,0 +1,52 @@
+# Default: normalize line endings to LF in the repo, check out native on Windows
+# (Git core.autocrlf=true behavior — explicit here so it's not environment-dependent).
+* text=auto eol=lf
+
+# Force LF for shell scripts (otherwise CRLF breaks them on Linux/macOS).
+*.sh    text eol=lf
+
+# Force CRLF for Windows-only batch / PowerShell scripts.
+*.ps1   text eol=crlf
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+
+# Treat these as binary — never try to diff or merge.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.icns  binary
+*.webp  binary
+*.pdf   binary
+*.zip   binary
+*.gz    binary
+*.tar   binary
+*.tgz   binary
+*.7z    binary
+*.rar   binary
+*.exe   binary
+*.dll   binary
+*.dylib binary
+*.so    binary
+*.db    binary
+*.sqlite binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.otf   binary
+*.eot   binary
+*.mp3   binary
+*.mp4   binary
+*.mov   binary
+*.wav   binary
+
+# Lock files — keep diffable but don't show in PR diff stats by default.
+pnpm-lock.yaml -diff
+package-lock.json -diff
+Cargo.lock -diff
+
+# Generated source maps and minified assets — collapse from PR diffs.
+*.min.js   -diff
+*.min.css  -diff
+*.map      -diff

@@ -1,0 +1,110 @@
+# ============================================================
+# Dependencies
+# ============================================================
+node_modules/
+.pnpm-store/
+
+# ============================================================
+# Build outputs
+# ============================================================
+# Vite / TypeScript
+dist/
+dist-ssr/
+*.tsbuildinfo
+node_modules/.tmp/
+
+# Tauri Rust target — large, regenerated per machine.
+# NOTE: src-tauri/Cargo.lock IS committed (this is an app, not a library).
+src-tauri/target/
+
+# Tauri generated mobile projects (Android/iOS scaffolding produced by
+# `tauri android init` / `tauri ios init`). Regenerated on demand and
+# tends to drift between machines / Xcode versions.
+src-tauri/gen/
+
+# Docker-driven cross-platform build outputs (see DOCKER.md).
+dist-linux/
+dist-android/
+
+# ============================================================
+# Internal-only docs — planning / WIP, not for the public repo.
+# Kept on disk locally; never tracked.
+# ============================================================
+docs/internal/
+
+# ============================================================
+# Logs
+# ============================================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ============================================================
+# Env / secrets
+# ============================================================
+.env
+.env.local
+.env.*.local
+*.local
+
+# Signing keys & certificates — NEVER commit these.
+keys/
+*.keystore
+*.jks
+*.p12
+*.pfx
+*.mobileprovision
+*.cer
+
+# Tauri updater private signing key (the .pub one is fine to commit).
+*.tauri.key
+*.tauri.key.enc
+
+# `scripts/setup-updater.{ps1,sh}` writes the freshly-generated private key
+# here. Nothing else should ever live in this directory.
+secrets/
+
+# ============================================================
+# Editors / IDEs
+# ============================================================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+*.bak
+*.orig
+
+# ============================================================
+# OS
+# ============================================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# ============================================================
+# Test / coverage
+# ============================================================
+coverage/
+.nyc_output/
+
+# ============================================================
+# Project-specific
+# ============================================================
+# Local upscaled master generated from the small logo.ico — keep the artwork
+# tracked once you have a proper 1024×1024 source.
+# (Leave the line commented; uncomment if you don't want the placeholder
+#  master in history.)
+# src-tauri/icons/master.png

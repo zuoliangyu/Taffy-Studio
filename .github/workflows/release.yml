@@ -1,0 +1,176 @@
+name: Release
+
+# Trigger on annotated tags shaped like v0.1.0 / v1.2.3-rc.1.
+# Also runnable manually for dry-runs (skips the GH Release upload step).
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to create the GitHub Release
+
+jobs:
+  # ---- Desktop matrix: Windows / macOS / Linux ------------------------
+  desktop:
+    name: Desktop (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            rust-target: x86_64-unknown-linux-gnu
+            bundles: deb,appimage
+          - os: macos-14            # arm64 (Apple Silicon)
+            rust-target: aarch64-apple-darwin
+            bundles: app,dmg
+          - os: macos-13            # x86_64 — Intel Macs
+            rust-target: x86_64-apple-darwin
+            bundles: app,dmg
+          - os: windows-latest
+            rust-target: x86_64-pc-windows-msvc
+            bundles: nsis,msi
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            libxdo-dev \
+            patchelf
+
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: ${{ matrix.rust-target }}
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build (frontend + tauri bundle)
+        # The tauri-action wrapper would also work; calling pnpm directly
+        # keeps the script identical to local builds. Signing env vars are
+        # consumed by tauri-bundler — they're empty in PRs (no signing), and
+        # set on tag pushes via repo secrets so the updater bundles get .sig
+        # sidecars. See docs/UPDATER.md for the setup procedure.
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: pnpm tauri build --bundles ${{ matrix.bundles }} --target ${{ matrix.rust-target }}
+
+      - name: Collect artifacts
+        # Tauri scatters outputs by bundle type — flatten them under one folder.
+        # We also grab .sig sidecars (updater signatures) when present.
+        shell: bash
+        run: |
+          mkdir -p staged
+          src="src-tauri/target/${{ matrix.rust-target }}/release/bundle"
+          find "$src" -type f \( \
+            -name '*.deb' -o -name '*.AppImage' -o -name '*.AppImage.tar.gz' -o -name '*.rpm' \
+            -o -name '*.dmg' -o -name '*.app.tar.gz' \
+            -o -name '*.msi' -o -name '*.exe' -o -name '*.nsis.zip' \
+            -o -name '*.sig' \
+          \) -exec cp -v {} staged/ \;
+          ls -lah staged
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: staged/
+          if-no-files-found: error
+
+  # ---- Android via Docker (same image we use locally) ----------------
+  android:
+    name: Android (Docker)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Android image (cached layers)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/android.Dockerfile
+          load: true
+          tags: taffy-studio-android:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Extract APKs / AABs
+        run: |
+          mkdir -p dist-android
+          docker run --rm -v "${PWD}/dist-android:/out" taffy-studio-android:ci
+          ls -lah dist-android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: dist-android/
+          if-no-files-found: error
+
+  # ---- Aggregate + publish GH Release --------------------------------
+  release:
+    name: Publish GitHub Release
+    needs: [desktop, android]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp -v {} release/ \;
+          ls -lah release
+
+      # Build latest.json from the bundles + .sig sidecars in release/. The
+      # script noisily refuses if no updater-eligible artifact has a
+      # matching .sig — which is what happens when the signing secrets
+      # weren't configured. That's the canary you want.
+      - name: Generate updater manifest (latest.json)
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          node scripts/build-updater-manifest.mjs \
+            --in  release \
+            --out release/latest.json \
+            --version "$version" \
+            --repo "${{ github.repository }}"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          draft: true # safer: review before publishing
+          generate_release_notes: true

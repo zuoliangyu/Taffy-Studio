@@ -1,0 +1,73 @@
+[package]
+name = "taffy-studio"
+version = "0.1.0"
+description = "Taffy Studio — cross-platform AI workstation"
+authors = ["you"]
+edition = "2021"
+rust-version = "1.77"
+
+# Mobile entry point. `tauri android dev` / `tauri ios dev` load this lib;
+# desktop loads main.rs which calls into the same run() function.
+[lib]
+name = "taffy_studio_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-http = "2"
+tauri-plugin-log = "2"
+tauri-plugin-notification = "2"
+tauri-plugin-os = "2"
+tauri-plugin-shell = "2"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+tauri-plugin-store = "2"
+
+# Cross-platform shared deps — used by lib.rs on every target, so they must
+# live in the top-level [dependencies] (NOT the desktop-only target block, or
+# mobile builds fail to find serde/reqwest/tokio).
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+
+# HTTP + streaming for LLM calls. rustls so we don't depend on system OpenSSL
+# (matters on Android, mobile-friendly).
+reqwest = { version = "0.12", default-features = false, features = [
+  "rustls-tls",
+  "json",
+  "stream",
+  "http2",
+] }
+futures-util = "0.3"
+# `process` + `io-util` drive the MCP stdio client (spawn child, read/write
+# its pipes); `sync` + `time` back the request/response oneshot map + timeouts.
+tokio = { version = "1", features = [
+  "macros",
+  "rt-multi-thread",
+  "process",
+  "io-util",
+  "sync",
+  "time",
+] }
+
+# Desktop-only deps: updater + keyring (system credential storage).
+# `keyring` crate maps to Win Credential Manager / macOS Keychain / libsecret.
+[target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
+tauri-plugin-updater = "2"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+
+[features]
+default = ["custom-protocol"]
+custom-protocol = ["tauri/custom-protocol"]
+
+# Dev-only deps: exercise the migration chain end-to-end in an isolated
+# in-memory SQLite, without pulling tauri-plugin-sql's async runtime into
+# tests. `bundled` ships SQLite (with FTS5) inside rusqlite so the CI
+# Linux box doesn't need a system libsqlite3 package.
+[dev-dependencies]
+rusqlite = { version = "0.32", features = ["bundled"] }
+tempfile = "3"

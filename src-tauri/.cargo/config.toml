@@ -1,0 +1,29 @@
+# Route crates.io through rsproxy.cn (ByteDance-run mirror) to dodge the
+# "schannel: server closed abruptly" errors on mainland networks.
+#
+# Cargo 1.70+ defaults to the sparse index; we override to a sparse mirror so
+# resolution stays fast (no full git clone of the index).
+#
+# Delete this file if you have stable direct access to crates.io, or override
+# per-invocation with: cargo --config 'source.crates-io.replace-with=""' ...
+
+[source.crates-io]
+replace-with = "rsproxy-sparse"
+
+[source.rsproxy-sparse]
+registry = "sparse+https://rsproxy.cn/index/"
+
+# Non-sparse fallback (some Cargo subcommands still want a git index URL).
+[source.rsproxy]
+registry = "https://rsproxy.cn/crates.io-index"
+
+[net]
+# Use the system `git` binary for git deps instead of cargo's built-in libgit2,
+# which is where most schannel-related flakes come from on Windows.
+git-fetch-with-cli = true
+retry = 5
+
+[http]
+# Be generous with timeouts in case the mirror is slow at peak.
+timeout = 60
+multiplexing = false

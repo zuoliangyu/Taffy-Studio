@@ -1,0 +1,10 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "desktop",
+  "description": "Desktop-only capabilities (updater, deeper shell access).",
+  "windows": ["main"],
+  "permissions": [
+    "updater:default"
+  ],
+  "platforms": ["linux", "macOS", "windows"]
+}
