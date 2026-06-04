@@ -31,7 +31,7 @@ import type {
   RetrievedChunk,
 } from '../lib/rag'
 import type { BackupInfo, StorageInfo } from '../lib/storage'
-import type { DbExecResult, EmbedRequest } from './tauriApi'
+import type { EmbedRequest } from './tauriApi'
 
 function notImpl(name: string): never {
   throw new Error(`[web] ${name} is not implemented yet (data layer pending — milestone M3b)`)
@@ -300,7 +300,7 @@ export function backupNow(): Promise<BackupInfo> {
 }
 
 export function resetDatabase(): Promise<void> {
-  return notImpl('resetDatabase')
+  return send('/api/reset', 'POST')
 }
 
 export function openConfigDir(): Promise<void> {
@@ -387,17 +387,6 @@ export function listMessages(conversationId: string): Promise<Message[]> {
 
 export function deleteMessage(id: string): Promise<void> {
   return send(`/api/messages/${encodeURIComponent(id)}`, 'DELETE')
-}
-
-// Generic SQL has no web counterpart by design (the user chose semantic
-// endpoints, not a SQL passthrough). Search / RAG / export will get their own
-// semantic endpoints; until then these are unavailable in the browser.
-export function dbSelect<T>(_sql: string, _params?: unknown[]): Promise<T> {
-  return notImpl('dbSelect')
-}
-
-export function dbExecute(_sql: string, _params?: unknown[]): Promise<DbExecResult> {
-  return notImpl('dbExecute')
 }
 
 // ---------- KV store ----------

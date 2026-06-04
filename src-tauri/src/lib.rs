@@ -646,24 +646,6 @@ fn kv_delete(db: State<'_, taffy_core::Db>, key: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn db_select(
-    db: State<'_, taffy_core::Db>,
-    sql: String,
-    params: Option<Vec<serde_json::Value>>,
-) -> Result<Vec<serde_json::Value>, String> {
-    db.select_json(&sql, &params.unwrap_or_default())
-}
-
-#[tauri::command]
-fn db_execute(
-    db: State<'_, taffy_core::Db>,
-    sql: String,
-    params: Option<Vec<serde_json::Value>>,
-) -> Result<taffy_core::db::ExecResult, String> {
-    db.execute_sql(&sql, &params.unwrap_or_default())
-}
-
-#[tauri::command]
 fn db_init() -> Result<(), String> {
     // The DB is opened + migrated in setup(); nothing to do here.
     Ok(())
@@ -848,8 +830,6 @@ pub fn run() {
             kv_get,
             kv_set,
             kv_delete,
-            db_select,
-            db_execute,
             db_init,
             // RAG (taffy-core::db knowledge bases)
             rag_list_kbs,

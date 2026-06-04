@@ -224,12 +224,6 @@ export function openConfigDir(): Promise<void> {
 
 // ---------- SQLite — semantic ops (taffy-core::db via Tauri commands) ----------
 
-/** Result of a generic write; mirrors the old plugin-sql QueryResult. */
-export interface DbExecResult {
-  rowsAffected: number
-  lastInsertId?: number
-}
-
 /** No-op: the DB is opened + migrated in Rust at app startup. */
 export function dbInit(): Promise<void> {
   return invoke<void>('db_init')
@@ -302,16 +296,6 @@ export function listMessages(conversationId: string): Promise<Message[]> {
 
 export function deleteMessage(id: string): Promise<void> {
   return invoke<void>('msg_delete', { id })
-}
-
-// Generic SQL — desktop-only escape hatch for paths not yet semantic
-// (search / RAG / export). Backed by the same core::Db connection.
-export function dbSelect<T>(sql: string, params?: unknown[]): Promise<T> {
-  return invoke<T>('db_select', { sql, params })
-}
-
-export function dbExecute(sql: string, params?: unknown[]): Promise<DbExecResult> {
-  return invoke<DbExecResult>('db_execute', { sql, params })
 }
 
 // ---------- KV store (taffy-core::db `kv` table) ----------

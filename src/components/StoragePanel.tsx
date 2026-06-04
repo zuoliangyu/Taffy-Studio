@@ -232,6 +232,14 @@ export function StoragePanel() {
             >
               {busy === 'import' ? 'Importing…' : 'Import JSON…'}
             </button>
+            <button
+              type="button"
+              className="small destructive-btn"
+              onClick={() => setConfirmingReset(true)}
+              disabled={busy !== null}
+            >
+              Reset…
+            </button>
           </div>
           {lastImport && (
             <div className="storage-notice">
@@ -343,11 +351,19 @@ export function StoragePanel() {
 
       {confirmingReset && (
         <div className="reset-confirm">
-          <p>
-            This deletes all conversations and messages. A snapshot is saved to
-            <code className="path"> backups/</code> first; you can restore by
-            copying it over <code>{info?.dbPath?.split(/[\\/]/).pop() ?? 'taffy-studio.db'}</code>.
-          </p>
+          {IS_TAURI ? (
+            <p>
+              This deletes all conversations and messages. A snapshot is saved to
+              <code className="path"> backups/</code> first; you can restore by
+              copying it over{' '}
+              <code>{info?.dbPath?.split(/[\\/]/).pop() ?? 'taffy-studio.db'}</code>.
+            </p>
+          ) : (
+            <p>
+              This permanently deletes all conversations and messages on the
+              server. Export a JSON backup first if you might want them back.
+            </p>
+          )}
           <div className="storage-actions">
             <button type="button" className="ghost small" onClick={() => setConfirmingReset(false)}>
               Cancel

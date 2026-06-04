@@ -44,33 +44,6 @@ export interface Message {
   attachments?: MessageAttachment[]
 }
 
-/** Minimal DB surface used across this module + rag.ts. Backed by the backend
- *  driver (`services/api`): Tauri → plugin-sql; web → server SQL endpoint. The
- *  `.select` / `.execute` shape is kept identical to tauri-plugin-sql so all
- *  existing call sites work unchanged. */
-export interface Db {
-  select<T>(sql: string, params?: unknown[]): Promise<T>
-  execute(sql: string, params?: unknown[]): Promise<{ rowsAffected: number; lastInsertId?: number }>
-}
-
-const dbFacade: Db = {
-  select<T>(sql: string, params?: unknown[]): Promise<T> {
-    return api.dbSelect<T>(sql, params)
-  },
-  execute(sql: string, params?: unknown[]) {
-    return api.dbExecute(sql, params)
-  },
-}
-
-async function db(): Promise<Db> {
-  return dbFacade
-}
-
-/** Shared connection accessor for sibling modules (e.g. rag.ts). */
-export function getDb(): Promise<Db> {
-  return db()
-}
-
 export async function initDb(): Promise<void> {
   // Open the DB; migrations run in Rust on plugin init.
   await api.dbInit()
@@ -81,11 +54,10 @@ export function uuid(): string {
   return crypto.randomUUID()
 }
 
-// All data ops are now SEMANTIC: they delegate to the backend driver
+// All data ops are SEMANTIC: they delegate to the backend driver
 // (`services/api`), which runs them in taffy-core::db (Tauri command on desktop,
 // HTTP route on web) — conversations, messages, search, RAG, export/import. The
-// SQL lives in Rust. The `db()` / `getDb()` generic-SQL facade below is kept as
-// an escape hatch but no longer has a frontend caller.
+// SQL lives in Rust; the frontend no longer issues any raw SQL.
 
 export function listConversations(): Promise<Conversation[]> {
   return api.listConversations()

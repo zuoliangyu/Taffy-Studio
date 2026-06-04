@@ -355,6 +355,12 @@ async fn import_handler(
     db.import_conversations(&conversations).map(Json).map_err(ise)
 }
 
+/// Wipe all user data (keeps the schema). No on-disk backup like the desktop —
+/// the server has no backups dir; the client should warn before calling this.
+async fn reset_handler(State(db): State<Shared>) -> Result<(), (StatusCode, String)> {
+    db.reset().map_err(ise)
+}
+
 // ---------- conversations ----------
 
 #[derive(Deserialize)]
@@ -566,6 +572,7 @@ async fn main() {
         .route("/api/search", post(search_handler))
         .route("/api/export", get(export_handler))
         .route("/api/import", post(import_handler))
+        .route("/api/reset", post(reset_handler))
         .route("/api/conversations", get(conv_list_h).post(conv_create_h))
         .route("/api/conversations/{id}", delete(conv_delete_h))
         .route("/api/conversations/{id}/model", post(conv_model_h))
