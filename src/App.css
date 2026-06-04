@@ -427,6 +427,21 @@ input:focus, select:focus, textarea:focus {
   border: 1px solid hsl(var(--border) / 0.5);
 }
 
+/* Topbar build-target badge (web vs desktop). The sidebar rule above only
+   styles the drawer copy; the topbar one needs its own pill treatment so it
+   reads as an intentional badge instead of orphaned text. */
+.topbar-actions .platform-pill {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: hsl(var(--muted) / 0.55);
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border) / 0.5);
+  user-select: none;
+}
+
 .sidebar-actions {
   display: flex;
   flex-direction: column;
@@ -736,6 +751,18 @@ input:focus, select:focus, textarea:focus {
   color: hsl(var(--muted-foreground));
   font-size: 13px;
   gap: 6px;
+}
+
+/* Empty-state shown inside the message scroller for a brand-new conversation.
+   The scroller is a flex column, so margin:auto centers it on both axes. */
+.messages-empty {
+  height: auto;
+  margin: auto;
+  text-align: center;
+  padding: 32px 16px;
+}
+.messages-empty p {
+  margin: 0;
 }
 
 /* ============================================================

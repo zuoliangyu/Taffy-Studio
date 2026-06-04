@@ -13,6 +13,7 @@ export const en = {
   'topbar.search': 'Search messages (Ctrl/Cmd+K)',
   'topbar.settings': 'Open settings',
   'topbar.openConvos': 'Open conversations',
+  'topbar.platform': 'Running as: {platform}',
 
   // --- sidebar ---
   'sidebar.conversations': 'Conversations',
@@ -35,6 +36,12 @@ export const en = {
 
   // --- chat ---
   'chat.emptyPick': 'Pick a conversation, or create a new one on the left.',
+  'chat.emptyConvo': 'This conversation is empty.',
+  'chat.emptyConvoHint': 'Type a message below to get started.',
+  'role.user': 'You',
+  'role.assistant': 'Assistant',
+  'role.system': 'System',
+  'role.tool': 'Tool',
   'chat.regenerate': '↻ Regenerate',
   'chat.regenerateHint': 'Drop the last reply and stream again',
   'chat.stop': '⏹ Stop',
@@ -214,6 +221,7 @@ export const zh: Record<TKey, string> = {
   'topbar.search': '搜索消息（Ctrl/Cmd+K）',
   'topbar.settings': '打开设置',
   'topbar.openConvos': '打开会话列表',
+  'topbar.platform': '运行环境：{platform}',
 
   'sidebar.conversations': '会话',
   'sidebar.newChat': '+ 新建对话',
@@ -233,6 +241,12 @@ export const zh: Record<TKey, string> = {
   'menu.confirmDelete': '再次点击确认删除',
 
   'chat.emptyPick': '在左侧选择一个会话，或新建一个。',
+  'chat.emptyConvo': '这个会话还是空的。',
+  'chat.emptyConvoHint': '在下面输入消息开始吧。',
+  'role.user': '你',
+  'role.assistant': '助手',
+  'role.system': '系统',
+  'role.tool': '工具',
   'chat.regenerate': '↻ 重新生成',
   'chat.regenerateHint': '丢弃最后一条回复并重新生成',
   'chat.stop': '⏹ 停止',

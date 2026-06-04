@@ -545,6 +545,12 @@ export function ChatPanel({
         </div>
       )}
       <div className="messages" ref={scrollerRef}>
+        {messages.length === 0 && !streaming && !retrieving && toolActivity.length === 0 && (
+          <div className="empty messages-empty">
+            <p>{t('chat.emptyConvo')}</p>
+            <p className="muted-small">{t('chat.emptyConvoHint')}</p>
+          </div>
+        )}
         {messages.map((m) => (
           <Bubble key={m.id} role={m.role} content={m.content} attachments={m.attachments} />
         ))}
@@ -772,11 +778,20 @@ function Bubble({
   attachments?: Attachment[]
   pending?: boolean
 }) {
+  const { t } = useI18n()
   const asPlain = role === 'user'
   const [previewing, setPreviewing] = useState<Attachment | null>(null)
+  const roleLabel =
+    role === 'user'
+      ? t('role.user')
+      : role === 'system'
+        ? t('role.system')
+        : role === 'tool'
+          ? t('role.tool')
+          : t('role.assistant')
   return (
     <div className={`bubble bubble-${role} ${pending ? 'pending' : ''}`}>
-      <div className="bubble-role">{role}</div>
+      <div className="bubble-role">{roleLabel}</div>
       {attachments && attachments.length > 0 && (
         <AttachmentChips
           items={attachments}

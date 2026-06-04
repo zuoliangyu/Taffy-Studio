@@ -249,7 +249,7 @@ export default function App() {
 
           <div className="topbar-actions">
             {!isMobile && (
-              <span className="platform-pill" title="Detected platform">
+              <span className="platform-pill" title={t('topbar.platform', { platform })}>
                 {platform}
               </span>
             )}
