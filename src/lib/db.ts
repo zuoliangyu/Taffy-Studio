@@ -1,6 +1,6 @@
 // SQLite access goes through the Tauri SQL plugin (sqlx under the hood).
 // Schema evolution lives in Rust (see src-tauri/src/lib.rs Migration list).
-import Database from '@tauri-apps/plugin-sql'
+import { api } from '../services/api'
 
 export interface Conversation {
   id: string
@@ -55,24 +55,36 @@ function parseAttachments(raw: unknown): MessageAttachment[] | undefined {
   }
 }
 
-let _db: Database | null = null
-
-async function db(): Promise<Database> {
-  if (_db) return _db
-  // The URL is resolved relative to AppConfig dir on every platform.
-  _db = await Database.load('sqlite:taffy-studio.db')
-  return _db
+/** Minimal DB surface used across this module + rag.ts. Backed by the backend
+ *  driver (`services/api`): Tauri → plugin-sql; web → server SQL endpoint. The
+ *  `.select` / `.execute` shape is kept identical to tauri-plugin-sql so all
+ *  existing call sites work unchanged. */
+export interface Db {
+  select<T>(sql: string, params?: unknown[]): Promise<T>
+  execute(sql: string, params?: unknown[]): Promise<{ rowsAffected: number; lastInsertId?: number }>
 }
 
-/** Shared connection accessor for sibling modules (e.g. rag.ts) so they reuse
- *  the same pooled handle instead of opening a second one. */
-export function getDb(): Promise<Database> {
+const dbFacade: Db = {
+  select<T>(sql: string, params?: unknown[]): Promise<T> {
+    return api.dbSelect<T>(sql, params)
+  },
+  execute(sql: string, params?: unknown[]) {
+    return api.dbExecute(sql, params)
+  },
+}
+
+async function db(): Promise<Db> {
+  return dbFacade
+}
+
+/** Shared connection accessor for sibling modules (e.g. rag.ts). */
+export function getDb(): Promise<Db> {
   return db()
 }
 
 export async function initDb(): Promise<void> {
-  // Touch the connection; migrations run in Rust on plugin init.
-  await db()
+  // Open the DB; migrations run in Rust on plugin init.
+  await api.dbInit()
 }
 
 export function uuid(): string {

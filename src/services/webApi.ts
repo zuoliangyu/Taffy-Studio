@@ -14,7 +14,7 @@ import type {
 } from '../lib/llm'
 import type { McpServerConfig, McpTool } from '../lib/mcp'
 import type { BackupInfo, StorageInfo } from '../lib/storage'
-import type { EmbedRequest } from './tauriApi'
+import type { DbExecResult, EmbedRequest } from './tauriApi'
 
 function notImpl(name: string): never {
   throw new Error(`[web] ${name} is not implemented yet (web shell pending — milestone M3)`)
@@ -124,4 +124,32 @@ export function resetDatabase(): Promise<void> {
 
 export function openConfigDir(): Promise<void> {
   return notImpl('openConfigDir')
+}
+
+// ---------- SQLite ----------
+
+export function dbInit(): Promise<void> {
+  return notImpl('dbInit')
+}
+
+export function dbSelect<T>(_sql: string, _params?: unknown[]): Promise<T> {
+  return notImpl('dbSelect')
+}
+
+export function dbExecute(_sql: string, _params?: unknown[]): Promise<DbExecResult> {
+  return notImpl('dbExecute')
+}
+
+// ---------- KV store ----------
+
+export function kvGet<T>(_key: string): Promise<T | null> {
+  return notImpl('kvGet')
+}
+
+export function kvSet<T>(_key: string, _value: T): Promise<void> {
+  return notImpl('kvSet')
+}
+
+export function kvDelete(_key: string): Promise<void> {
+  return notImpl('kvDelete')
 }

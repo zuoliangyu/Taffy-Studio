@@ -1,29 +1,16 @@
 // Persistent KV — the spiritual replacement for electron-store.
-// Backed by a JSON file in AppConfig dir.
-import { Store } from '@tauri-apps/plugin-store'
+// Transport lives in the backend driver (`services/api`): Tauri → plugin-store
+// (settings.json in AppConfig dir); web → server-side KV.
+import { api } from '../services/api'
 
-let _store: Store | null = null
-
-async function store(): Promise<Store> {
-  if (_store) return _store
-  // `defaults` is required by current StoreOptions; empty object is fine since
-  // each setting carries its own default at the call site (see settings.ts).
-  _store = await Store.load('settings.json', { autoSave: true, defaults: {} })
-  return _store
+export function getSetting<T = unknown>(key: string): Promise<T | null> {
+  return api.kvGet<T>(key)
 }
 
-export async function getSetting<T = unknown>(key: string): Promise<T | null> {
-  const s = await store()
-  const v = await s.get<T>(key)
-  return v ?? null
+export function setSetting<T = unknown>(key: string, value: T): Promise<void> {
+  return api.kvSet<T>(key, value)
 }
 
-export async function setSetting<T = unknown>(key: string, value: T): Promise<void> {
-  const s = await store()
-  await s.set(key, value)
-}
-
-export async function deleteSetting(key: string): Promise<void> {
-  const s = await store()
-  await s.delete(key)
+export function deleteSetting(key: string): Promise<void> {
+  return api.kvDelete(key)
 }

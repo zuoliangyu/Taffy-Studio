@@ -5,6 +5,8 @@
 // React components stay 100% transport-agnostic.
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { platform } from '@tauri-apps/plugin-os'
+import Database from '@tauri-apps/plugin-sql'
+import { Store } from '@tauri-apps/plugin-store'
 import type {
   ChatRequest,
   ChatResponse,
@@ -136,4 +138,58 @@ export function resetDatabase(): Promise<void> {
 
 export function openConfigDir(): Promise<void> {
   return invoke<void>('open_config_dir')
+}
+
+// ---------- SQLite (tauri-plugin-sql) ----------
+
+/** Result of a write; mirrors tauri-plugin-sql's QueryResult. */
+export interface DbExecResult {
+  rowsAffected: number
+  lastInsertId?: number
+}
+
+let _db: Database | null = null
+async function db(): Promise<Database> {
+  if (_db) return _db
+  // URL is resolved relative to the AppConfig dir on every platform.
+  // Migrations run in Rust on plugin init.
+  _db = await Database.load('sqlite:taffy-studio.db')
+  return _db
+}
+
+/** Open the DB (and trigger Rust-side migrations) without issuing a query. */
+export async function dbInit(): Promise<void> {
+  await db()
+}
+
+export async function dbSelect<T>(sql: string, params?: unknown[]): Promise<T> {
+  return (await db()).select<T>(sql, params)
+}
+
+export async function dbExecute(sql: string, params?: unknown[]): Promise<DbExecResult> {
+  return (await db()).execute(sql, params)
+}
+
+// ---------- KV store (tauri-plugin-store, settings.json) ----------
+
+let _store: Store | null = null
+async function store(): Promise<Store> {
+  if (_store) return _store
+  // `defaults` is required by StoreOptions; each setting carries its own
+  // default at the call site, so an empty map is fine.
+  _store = await Store.load('settings.json', { autoSave: true, defaults: {} })
+  return _store
+}
+
+export async function kvGet<T>(key: string): Promise<T | null> {
+  const v = await (await store()).get<T>(key)
+  return v ?? null
+}
+
+export async function kvSet<T>(key: string, value: T): Promise<void> {
+  await (await store()).set(key, value)
+}
+
+export async function kvDelete(key: string): Promise<void> {
+  await (await store()).delete(key)
 }
