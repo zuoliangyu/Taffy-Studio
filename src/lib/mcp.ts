@@ -1,17 +1,30 @@
 // MCP client — frontend half. Server *configs* are persisted in the Store; the
-// live *connections* live in Rust (see src-tauri/src/mcp.rs). This module wraps
-// the invoke() surface and the config persistence.
+// live *connections* live in Rust (see crates/taffy-core/src/mcp.rs). This
+// module wraps the invoke() surface and the config persistence.
 import { api } from '../services/api'
 import { getSetting, setSetting } from './store'
+
+/** Transport for an MCP server. `stdio` spawns a local command (desktop /
+ *  server-side only — mobile can't spawn); `http` talks to a remote
+ *  Streamable-HTTP endpoint (works on every platform). Omitted = stdio. */
+export type McpTransport = 'stdio' | 'http'
 
 export interface McpServerConfig {
   /** Stable uuid. */
   id: string
   name: string
+  /** Defaults to 'stdio' when omitted (back-compat with existing configs). */
+  transport?: McpTransport
+  // --- stdio ---
   command: string
   args: string[]
   /** "KEY=value" entries. */
   env: string[]
+  // --- http ---
+  /** Remote endpoint (required when transport is 'http'). */
+  url?: string
+  /** "Header-Name: value" entries, e.g. auth tokens. */
+  headers?: string[]
   /** Auto-connect on app start. */
   enabled?: boolean
 }
