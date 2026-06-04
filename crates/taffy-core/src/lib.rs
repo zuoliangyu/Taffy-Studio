@@ -7,6 +7,7 @@
 pub mod db;
 pub mod llm;
 pub mod mcp;
+pub mod skills;
 
 // Convenience re-exports so shells can `use taffy_core::ChatRequest` etc.
 pub use db::{
@@ -17,3 +18,4 @@ pub use llm::{
     Attachment, ChatMessage, ChatRequest, ChatResponse, EmbedRequest, StreamEvent, ToolSpec,
 };
 pub use mcp::{McpServerConfig, McpState, McpTool};
+pub use skills::{default_skills_root, SkillMeta, SkillStore};

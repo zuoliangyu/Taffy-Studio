@@ -40,3 +40,9 @@ uuid = { version = "1", features = ["v4"] }
 # Resolve the per-user config dir so the desktop + web shells default to the
 # SAME database location.
 dirs = "6"
+# Skill packages import from .zip bundles. deflate-only keeps the dep lean
+# (no bzip2/zstd/aes); pure-Rust miniz_oxide so there's no system lib.
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+[dev-dependencies]
+tempfile = "3"
