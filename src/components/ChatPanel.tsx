@@ -813,6 +813,7 @@ function TemperatureChip({
   fallback: number
   onChange: (t: number | null) => Promise<void>
 }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   const effective = value ?? fallback
@@ -835,8 +836,11 @@ function TemperatureChip({
         onClick={() => setOpen((o) => !o)}
         title={
           isOverride
-            ? `Conversation temperature: ${effective.toFixed(1)} (overrides default ${fallback.toFixed(1)})`
-            : `Temperature ${effective.toFixed(1)} (using global default)`
+            ? t('temp.titleOverride', {
+                v: effective.toFixed(1),
+                d: fallback.toFixed(1),
+              })
+            : t('temp.titleDefault', { v: effective.toFixed(1) })
         }
       >
         <span className="label">T {effective.toFixed(1)}</span>
@@ -894,6 +898,7 @@ function OverridesChip({
   onChangeMaxTokens: (n: number | null) => Promise<void>
   onChangeSystemPrompt: (s: string | null) => Promise<void>
 }) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
   // Local draft for max_tokens so we don't write the DB on every keystroke;
@@ -951,9 +956,7 @@ function OverridesChip({
         className={`model-chip overrides-chip ${hasOverride ? 'override' : ''}`}
         onClick={() => setOpen((o) => !o)}
         title={
-          hasOverride
-            ? 'Conversation overrides active — click to edit'
-            : 'Per-conversation overrides (max tokens, system prompt)'
+          hasOverride ? t('overrides.titleActive') : t('overrides.titleNone')
         }
       >
         <span className="label">⚙</span>

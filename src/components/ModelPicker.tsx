@@ -6,6 +6,7 @@
 // This same popover (with `position` props) is reused by the composer's
 // @-mention trigger; that's why the inner list is split out as ModelList.
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useI18n } from '../i18n'
 import { getModelCapabilities } from '../lib/capabilities'
 import type { AppSettings, ProviderEntry } from '../lib/settings'
 
@@ -17,6 +18,7 @@ interface PickerProps {
 }
 
 export function ModelPicker({ settings, providerId, model, onPick }: PickerProps) {
+  const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const wrapRef = useRef<HTMLDivElement>(null)
 
@@ -38,7 +40,7 @@ export function ModelPicker({ settings, providerId, model, onPick }: PickerProps
         type="button"
         className="model-chip"
         onClick={() => setOpen((o) => !o)}
-        title="Switch the model used for this conversation"
+        title={t('model.switchTitle')}
       >
         <span className="dot" data-kind={provider?.kind ?? 'custom'} />
         <span className="label">{label}</span>
