@@ -98,7 +98,8 @@ impl SkillStore {
     /// Create/replace a skill from a ZIP. `SKILL.md` may sit at the root or one
     /// level down (a single wrapping folder); everything beside it is kept.
     pub fn import_zip(&self, bytes: &[u8]) -> Result<SkillMeta, String> {
-        let mut zip = zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
+        let mut zip =
+            zip::ZipArchive::new(std::io::Cursor::new(bytes)).map_err(|e| e.to_string())?;
         let mut raw: Vec<(String, Vec<u8>)> = Vec::new();
         for i in 0..zip.len() {
             let mut f = zip.by_index(i).map_err(|e| e.to_string())?;
@@ -233,7 +234,10 @@ pub(crate) fn resolve_within(base: &Path, rel: &str) -> Option<PathBuf> {
 fn parse_skill(content: &str) -> Option<SkillMeta> {
     let (fm, _) = split_frontmatter(content);
     let map = parse_yaml_kv(fm);
-    let name = map.get("name").map(|s| s.trim()).filter(|s| !s.is_empty())?;
+    let name = map
+        .get("name")
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())?;
     let description = map
         .get("description")
         .map(|s| s.trim())

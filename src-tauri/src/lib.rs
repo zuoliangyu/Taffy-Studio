@@ -172,19 +172,17 @@ async fn chat_stream(
     // them to a single type so the consume loop is written once.
     let kind = provider_kind(&req.provider);
     let use_tools = matches!(kind, "openai" | "anthropic")
-        && (req.tools.as_ref().is_some_and(|t| !t.is_empty())
-            || !req.enabled_skills.is_empty());
+        && (req.tools.as_ref().is_some_and(|t| !t.is_empty()) || !req.enabled_skills.is_empty());
 
-    let mut stream: std::pin::Pin<
-        Box<dyn futures_util::Stream<Item = StreamEvent> + Send>,
-    > = if use_tools {
-        let tools = req.tools.clone().unwrap_or_default();
-        let mcp = mcp_state.inner().clone();
-        let sk = skills.inner().clone();
-        Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp, sk))
-    } else {
-        Box::pin(taffy_core::llm::chat_stream(req))
-    };
+    let mut stream: std::pin::Pin<Box<dyn futures_util::Stream<Item = StreamEvent> + Send>> =
+        if use_tools {
+            let tools = req.tools.clone().unwrap_or_default();
+            let mcp = mcp_state.inner().clone();
+            let sk = skills.inner().clone();
+            Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp, sk))
+        } else {
+            Box::pin(taffy_core::llm::chat_stream(req))
+        };
 
     // Accumulate Token text so a mid-stream cancel can report what we had, the
     // same as the old loop's `Cancelled { content: full }`.
@@ -669,10 +667,7 @@ fn msg_delete(db: State<'_, taffy_core::Db>, id: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn kv_get(
-    db: State<'_, taffy_core::Db>,
-    key: String,
-) -> Result<Option<serde_json::Value>, String> {
+fn kv_get(db: State<'_, taffy_core::Db>, key: String) -> Result<Option<serde_json::Value>, String> {
     db.kv_get(&key)
 }
 
@@ -960,4 +955,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
-

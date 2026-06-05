@@ -116,7 +116,7 @@ echo
 echo "Open src-tauri/tauri.conf.json and replace the placeholder host in"
 echo "plugins.updater.endpoints[0] with your real GitHub owner/repo, e.g.:"
 echo
-echo "  https://github.com/myhandle/taffy-studio/releases/latest/download/latest.json"
+echo "  https://github.com/zuoliangyu/Taffy-Studio/releases/latest/download/latest.json"
 echo
 echo "Rotation, hosting alternatives, and troubleshooting: see docs/UPDATER.md"
 echo

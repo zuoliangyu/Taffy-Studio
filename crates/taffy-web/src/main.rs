@@ -119,7 +119,11 @@ fn key_for(provider: &str, current: &Option<String>) -> Option<String> {
     std::env::var(per_kind)
         .ok()
         .filter(|s| !s.is_empty())
-        .or_else(|| std::env::var("TAFFY_API_KEY").ok().filter(|s| !s.is_empty()))
+        .or_else(|| {
+            std::env::var("TAFFY_API_KEY")
+                .ok()
+                .filter(|s| !s.is_empty())
+        })
 }
 
 // ---------- LLM / embed ----------
@@ -132,14 +136,20 @@ async fn models_handler(
     Json(mut req): Json<ChatRequest>,
 ) -> Result<Json<Vec<String>>, (StatusCode, String)> {
     req.api_key = key_for(&req.provider, &req.api_key);
-    taffy_core::llm::list_models(&req).await.map(Json).map_err(ise)
+    taffy_core::llm::list_models(&req)
+        .await
+        .map(Json)
+        .map_err(ise)
 }
 
 async fn chat_complete_handler(
     Json(mut req): Json<ChatRequest>,
 ) -> Result<Json<ChatResponse>, (StatusCode, String)> {
     req.api_key = key_for(&req.provider, &req.api_key);
-    taffy_core::llm::chat_complete(&req).await.map(Json).map_err(ise)
+    taffy_core::llm::chat_complete(&req)
+        .await
+        .map(Json)
+        .map_err(ise)
 }
 
 async fn chat_stream_handler(
@@ -153,8 +163,7 @@ async fn chat_stream_handler(
     // The browser cancels by aborting the fetch, which drops this stream.
     let kind = taffy_core::llm::provider_kind(&req.provider);
     let use_tools = matches!(kind, "openai" | "anthropic")
-        && (req.tools.as_ref().is_some_and(|t| !t.is_empty())
-            || !req.enabled_skills.is_empty());
+        && (req.tools.as_ref().is_some_and(|t| !t.is_empty()) || !req.enabled_skills.is_empty());
     let events: std::pin::Pin<Box<dyn Stream<Item = StreamEvent> + Send>> = if use_tools {
         let tools = req.tools.clone().unwrap_or_default();
         Box::pin(taffy_core::llm::agentic_stream(req, tools, mcp, skills))
@@ -169,7 +178,10 @@ async fn embed_handler(
     Json(mut req): Json<EmbedRequest>,
 ) -> Result<Json<Vec<Vec<f32>>>, (StatusCode, String)> {
     req.api_key = key_for(&req.provider, &req.api_key);
-    taffy_core::llm::embed_texts(&req).await.map(Json).map_err(ise)
+    taffy_core::llm::embed_texts(&req)
+        .await
+        .map(Json)
+        .map_err(ise)
 }
 
 // ---------- MCP ----------
@@ -196,7 +208,10 @@ async fn mcp_connect_h(
     Extension(mcp): Extension<Mcp>,
     Json(cfg): Json<McpServerConfig>,
 ) -> Result<Json<Vec<McpTool>>, (StatusCode, String)> {
-    taffy_core::mcp::connect(&mcp, cfg).await.map(Json).map_err(ise)
+    taffy_core::mcp::connect(&mcp, cfg)
+        .await
+        .map(Json)
+        .map_err(ise)
 }
 
 async fn mcp_disconnect_h(
@@ -409,7 +424,9 @@ async fn import_handler(
     State(db): State<Shared>,
     Json(conversations): Json<Vec<taffy_core::ExportedConversation>>,
 ) -> Result<Json<taffy_core::ImportSummary>, (StatusCode, String)> {
-    db.import_conversations(&conversations).map(Json).map_err(ise)
+    db.import_conversations(&conversations)
+        .map(Json)
+        .map_err(ise)
 }
 
 /// Wipe all user data (keeps the schema). No on-disk backup like the desktop —
@@ -490,7 +507,8 @@ async fn conv_temperature_h(
     Path(id): Path<String>,
     Json(b): Json<TemperatureBody>,
 ) -> Result<(), (StatusCode, String)> {
-    db.update_conversation_temperature(&id, b.temperature).map_err(ise)
+    db.update_conversation_temperature(&id, b.temperature)
+        .map_err(ise)
 }
 
 async fn conv_max_tokens_h(
@@ -498,7 +516,8 @@ async fn conv_max_tokens_h(
     Path(id): Path<String>,
     Json(b): Json<MaxTokensBody>,
 ) -> Result<(), (StatusCode, String)> {
-    db.update_conversation_max_tokens(&id, b.max_tokens).map_err(ise)
+    db.update_conversation_max_tokens(&id, b.max_tokens)
+        .map_err(ise)
 }
 
 async fn conv_system_prompt_h(
@@ -629,14 +648,20 @@ async fn main() {
         .route("/api/embed", post(embed_handler))
         .route("/api/skills", get(skill_list_h).post(skill_import_md_h))
         .route("/api/skills/import-zip", post(skill_import_zip_h))
-        .route("/api/skills/{name}", get(skill_read_h).delete(skill_delete_h))
+        .route(
+            "/api/skills/{name}",
+            get(skill_read_h).delete(skill_delete_h),
+        )
         .route("/api/mcp/connect", post(mcp_connect_h))
         .route("/api/mcp/disconnect", post(mcp_disconnect_h))
         .route("/api/mcp/tools", get(mcp_tools_h))
         .route("/api/mcp/call", post(mcp_call_h))
         .route("/api/mcp/import-zip", post(mcp_import_zip_h))
         .route("/api/rag/kbs", get(rag_list_kbs_h).post(rag_create_kb_h))
-        .route("/api/rag/kbs/{id}", post(rag_update_kb_h).delete(rag_delete_kb_h))
+        .route(
+            "/api/rag/kbs/{id}",
+            post(rag_update_kb_h).delete(rag_delete_kb_h),
+        )
         .route("/api/rag/kbs/{id}/documents", get(rag_list_docs_h))
         .route("/api/rag/kbs/{id}/count", get(rag_count_h))
         .route("/api/rag/kbs/{id}/chunks", post(rag_add_chunks_h))
@@ -649,9 +674,18 @@ async fn main() {
         .route("/api/conversations", get(conv_list_h).post(conv_create_h))
         .route("/api/conversations/{id}", delete(conv_delete_h))
         .route("/api/conversations/{id}/model", post(conv_model_h))
-        .route("/api/conversations/{id}/temperature", post(conv_temperature_h))
-        .route("/api/conversations/{id}/max_tokens", post(conv_max_tokens_h))
-        .route("/api/conversations/{id}/system_prompt", post(conv_system_prompt_h))
+        .route(
+            "/api/conversations/{id}/temperature",
+            post(conv_temperature_h),
+        )
+        .route(
+            "/api/conversations/{id}/max_tokens",
+            post(conv_max_tokens_h),
+        )
+        .route(
+            "/api/conversations/{id}/system_prompt",
+            post(conv_system_prompt_h),
+        )
         .route("/api/conversations/{id}/title", post(conv_title_h))
         .route("/api/conversations/{id}/pinned", post(conv_pinned_h))
         .route(

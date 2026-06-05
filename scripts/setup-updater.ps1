@@ -106,7 +106,7 @@ Write-Host ""
 Write-Host "Open src-tauri/tauri.conf.json and replace the placeholder host in"
 Write-Host "plugins.updater.endpoints[0] with your real GitHub owner/repo, e.g.:"
 Write-Host ""
-Write-Host '  https://github.com/myhandle/taffy-studio/releases/latest/download/latest.json'
+Write-Host '  https://github.com/zuoliangyu/Taffy-Studio/releases/latest/download/latest.json'
 Write-Host ""
 Write-Host "Rotation, hosting alternatives, and troubleshooting: see docs/UPDATER.md"
 Write-Host ""

@@ -186,7 +186,9 @@ impl StdioConn {
         }))
         .map_err(|e| e.to_string())?;
         let mut w = self.stdin.lock().await;
-        w.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
+        w.write_all(line.as_bytes())
+            .await
+            .map_err(|e| e.to_string())?;
         w.write_all(b"\n").await.map_err(|e| e.to_string())?;
         w.flush().await.map_err(|e| e.to_string())?;
         Ok(())
@@ -450,10 +452,7 @@ fn resolve_stdio_command(command: &str, args: &[String]) -> (String, Vec<String>
 #[cfg(target_os = "windows")]
 fn windows_needs_cmd_shim(command: &str) -> bool {
     let lower = command.trim().to_ascii_lowercase();
-    !(lower == "cmd"
-        || lower == "cmd.exe"
-        || lower.ends_with(".exe")
-        || lower.ends_with(".com"))
+    !(lower == "cmd" || lower == "cmd.exe" || lower.ends_with(".exe") || lower.ends_with(".com"))
 }
 
 /// Spawn the configured command and wire up the stdio JSON-RPC reader.
@@ -679,8 +678,7 @@ mod tests {
     #[test]
     fn windows_wraps_shim_commands_in_cmd() {
         // Bare interpreter names go through `cmd /c`.
-        let (prog, args) =
-            resolve_stdio_command("npx", &["-y".into(), "@scope/server".into()]);
+        let (prog, args) = resolve_stdio_command("npx", &["-y".into(), "@scope/server".into()]);
         assert_eq!(prog, "cmd");
         assert_eq!(args, vec!["/c", "npx", "-y", "@scope/server"]);
         // Explicit executables and `cmd` itself are spawned unchanged.

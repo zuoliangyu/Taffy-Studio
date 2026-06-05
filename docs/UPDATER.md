@@ -69,12 +69,12 @@ not visible to PR builds — only tag pushes from the same repo.
 
 ### 3. Set the manifest endpoint URL
 
-Open `src-tauri/tauri.conf.json` and replace `OWNER/REPO` in
+Open `src-tauri/tauri.conf.json` and replace `zuoliangyu/Taffy-Studio` in
 `plugins.updater.endpoints[0]` with your real GitHub handle / repo
 name. The default points at:
 
 ```
-https://github.com/OWNER/REPO/releases/latest/download/latest.json
+https://github.com/zuoliangyu/Taffy-Studio/releases/latest/download/latest.json
 ```
 
 GitHub redirects `/releases/latest/download/<file>` to the latest

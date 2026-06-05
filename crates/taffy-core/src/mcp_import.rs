@@ -106,11 +106,7 @@ impl McpImportStore {
 
     /// Write all files to a staging dir, then swap it into place — a failed
     /// import can't leave a half-written server. Returns the final dir.
-    fn write_atomic(
-        &self,
-        name: &str,
-        files: HashMap<String, Vec<u8>>,
-    ) -> Result<PathBuf, String> {
+    fn write_atomic(&self, name: &str, files: HashMap<String, Vec<u8>>) -> Result<PathBuf, String> {
         let safe = sanitize_name(name).ok_or_else(|| format!("invalid server name '{name}'"))?;
         let target = self.root.join(&safe);
         let staging = self.root.join(format!(".{safe}.staging"));

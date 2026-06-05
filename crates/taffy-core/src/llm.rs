@@ -544,14 +544,20 @@ pub async fn chat_complete(req: &ChatRequest) -> Result<ChatResponse, String> {
                 match parse_sse_line(&line) {
                     Sse::Other => continue,
                     Sse::Done => {
-                        return Ok(ChatResponse { content: full, model: req.model.clone() });
+                        return Ok(ChatResponse {
+                            content: full,
+                            model: req.model.clone(),
+                        });
                     }
                     Sse::Data(data) => {
                         let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) else {
                             continue;
                         };
                         if is_terminal(kind, &json) {
-                            return Ok(ChatResponse { content: full, model: req.model.clone() });
+                            return Ok(ChatResponse {
+                                content: full,
+                                model: req.model.clone(),
+                            });
                         }
                         // A gateway echoing a non-streamed answer as SSE puts the
                         // whole reply in `message.content` (one frame); a real
@@ -565,7 +571,10 @@ pub async fn chat_complete(req: &ChatRequest) -> Result<ChatResponse, String> {
                 }
             }
         }
-        return Ok(ChatResponse { content: full, model: req.model.clone() });
+        return Ok(ChatResponse {
+            content: full,
+            model: req.model.clone(),
+        });
     }
 
     let json: serde_json::Value = response.json().await.map_err(|e| e.to_string())?;
@@ -736,7 +745,10 @@ fn build_skill_ctx(
     if metas.is_empty() {
         None
     } else {
-        Some(SkillCtx { store: store.clone(), metas })
+        Some(SkillCtx {
+            store: store.clone(),
+            metas,
+        })
     }
 }
 
@@ -751,7 +763,10 @@ fn available_skills_prompt(metas: &[crate::skills::SkillMeta]) -> String {
     for m in metas {
         s.push_str("  <skill>\n");
         s.push_str(&format!("    <name>{}</name>\n", m.name));
-        s.push_str(&format!("    <description>{}</description>\n", m.description));
+        s.push_str(&format!(
+            "    <description>{}</description>\n",
+            m.description
+        ));
         s.push_str("  </skill>\n");
     }
     s.push_str("</available_skills>");
@@ -792,14 +807,24 @@ fn exec_use_skill(ctx: Option<&SkillCtx>, args: &serde_json::Value) -> String {
     }
     if !ctx.metas.iter().any(|m| m.name == name) {
         let avail: Vec<&str> = ctx.metas.iter().map(|m| m.name.as_str()).collect();
-        return format!("ERROR: skill '{name}' is not enabled. Available: {}", avail.join(", "));
+        return format!(
+            "ERROR: skill '{name}' is not enabled. Available: {}",
+            avail.join(", ")
+        );
     }
-    match args.get("path").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    match args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         None => ctx
             .store
             .read_body(name)
             .unwrap_or_else(|| format!("ERROR: skill '{name}' has no SKILL.md")),
-        Some(p) => ctx.store.read_file(name, p).unwrap_or_else(|e| format!("ERROR: {e}")),
+        Some(p) => ctx
+            .store
+            .read_file(name, p)
+            .unwrap_or_else(|e| format!("ERROR: {e}")),
     }
 }
 
@@ -853,7 +878,9 @@ async fn read_json(
             accumulate_openai_sse(&text)
         });
     }
-    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+    resp.json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())
 }
 
 /// Rebuild an OpenAI non-streaming `{choices:[{message}]}` from an SSE body.
@@ -952,10 +979,19 @@ fn accumulate_anthropic_sse(text: &str) -> serde_json::Value {
             Some("content_block_start") => {
                 let idx = v.get("index").and_then(|x| x.as_u64()).unwrap_or(0) as usize;
                 while blocks.len() <= idx {
-                    blocks.push((String::new(), String::new(), String::new(), String::new(), String::new()));
+                    blocks.push((
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                        String::new(),
+                    ));
                 }
                 let cb = v.get("content_block");
-                let kind = cb.and_then(|c| c.get("type")).and_then(|x| x.as_str()).unwrap_or("text");
+                let kind = cb
+                    .and_then(|c| c.get("type"))
+                    .and_then(|x| x.as_str())
+                    .unwrap_or("text");
                 blocks[idx].0 = kind.to_string();
                 if let Some(id) = cb.and_then(|c| c.get("id")).and_then(|x| x.as_str()) {
                     blocks[idx].2 = id.to_string();
@@ -973,7 +1009,10 @@ fn accumulate_anthropic_sse(text: &str) -> serde_json::Value {
                 if let Some(t) = delta.and_then(|d| d.get("text")).and_then(|x| x.as_str()) {
                     blocks[idx].1.push_str(t);
                 }
-                if let Some(p) = delta.and_then(|d| d.get("partial_json")).and_then(|x| x.as_str()) {
+                if let Some(p) = delta
+                    .and_then(|d| d.get("partial_json"))
+                    .and_then(|x| x.as_str())
+                {
                     blocks[idx].4.push_str(p);
                 }
             }
@@ -1439,7 +1478,10 @@ mod agentic_sse_tests {
         let tc = &v["choices"][0]["message"]["tool_calls"][0];
         assert_eq!(tc["id"], serde_json::json!("call_1"));
         assert_eq!(tc["function"]["name"], serde_json::json!("get-sum"));
-        assert_eq!(tc["function"]["arguments"], serde_json::json!("{\"a\":1,\"b\":2}"));
+        assert_eq!(
+            tc["function"]["arguments"],
+            serde_json::json!("{\"a\":1,\"b\":2}")
+        );
     }
 
     #[test]
@@ -1450,16 +1492,23 @@ mod agentic_sse_tests {
             "data: [DONE]\n",
         );
         let v = accumulate_openai_sse(sse);
-        assert_eq!(v["choices"][0]["message"]["content"], serde_json::json!("pong"));
+        assert_eq!(
+            v["choices"][0]["message"]["content"],
+            serde_json::json!("pong")
+        );
         assert!(v["choices"][0]["message"]["tool_calls"].is_null());
     }
 
     #[test]
     fn openai_sse_full_message_frame() {
         // some gateways echo a whole non-streamed message in one frame
-        let sse = "data: {\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}\n";
+        let sse =
+            "data: {\"choices\":[{\"message\":{\"role\":\"assistant\",\"content\":\"hi\"}}]}\n";
         let v = accumulate_openai_sse(sse);
-        assert_eq!(v["choices"][0]["message"]["content"], serde_json::json!("hi"));
+        assert_eq!(
+            v["choices"][0]["message"]["content"],
+            serde_json::json!("hi")
+        );
     }
 
     #[test]

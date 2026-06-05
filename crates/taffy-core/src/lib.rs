@@ -12,8 +12,8 @@ pub mod skills;
 
 // Convenience re-exports so shells can `use taffy_core::ChatRequest` etc.
 pub use db::{
-    default_db_path, ChunkInput, Conversation, ConversationInit, Db, DocSummary, ExportedConversation,
-    ImportSummary, KnowledgeBase, Message, RetrievedChunk, SearchHit,
+    default_db_path, ChunkInput, Conversation, ConversationInit, Db, DocSummary,
+    ExportedConversation, ImportSummary, KnowledgeBase, Message, RetrievedChunk, SearchHit,
 };
 pub use llm::{
     Attachment, ChatMessage, ChatRequest, ChatResponse, EmbedRequest, StreamEvent, ToolSpec,

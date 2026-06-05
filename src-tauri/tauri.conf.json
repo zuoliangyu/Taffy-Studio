@@ -44,7 +44,7 @@
       "active": true,
       "pubkey": "REPLACE_VIA_scripts_setup-updater",
       "endpoints": [
-        "https://github.com/OWNER/REPO/releases/latest/download/latest.json"
+        "https://github.com/zuoliangyu/Taffy-Studio/releases/latest/download/latest.json"
       ]
     }
   }

@@ -389,15 +389,20 @@ impl Db {
         )
         .map_err(e2s)?;
         run_migrations(&conn)?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     /// In-memory database (tests).
     pub fn open_in_memory() -> Result<Self, String> {
         let conn = Connection::open_in_memory().map_err(e2s)?;
-        conn.execute_batch("PRAGMA foreign_keys = ON;").map_err(e2s)?;
+        conn.execute_batch("PRAGMA foreign_keys = ON;")
+            .map_err(e2s)?;
         run_migrations(&conn)?;
-        Ok(Self { conn: Mutex::new(conn) })
+        Ok(Self {
+            conn: Mutex::new(conn),
+        })
     }
 
     fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
@@ -548,8 +553,11 @@ impl Db {
 
     pub fn delete_conversation(&self, id: &str) -> Result<(), String> {
         let conn = self.lock();
-        conn.execute("DELETE FROM messages WHERE conversation_id = ?1", params![id])
-            .map_err(e2s)?;
+        conn.execute(
+            "DELETE FROM messages WHERE conversation_id = ?1",
+            params![id],
+        )
+        .map_err(e2s)?;
         conn.execute("DELETE FROM conversations WHERE id = ?1", params![id])
             .map_err(e2s)?;
         Ok(())
@@ -565,7 +573,8 @@ impl Db {
         attachments: Option<serde_json::Value>,
     ) -> Result<Message, String> {
         let now = now_ms();
-        let attachments = attachments.filter(|v| !matches!(v, serde_json::Value::Array(a) if a.is_empty()));
+        let attachments =
+            attachments.filter(|v| !matches!(v, serde_json::Value::Array(a) if a.is_empty()));
         let attachments_json = match &attachments {
             Some(v) => Some(serde_json::to_string(v).map_err(e2s)?),
             None => None,
@@ -710,11 +719,7 @@ impl Db {
     /// Patch a KB. Only the keys present in `patch` are changed — mirrors the
     /// frontend's `Partial<...>` semantics: an absent key keeps the current
     /// value, a present `null` clears it (provider_id / embed_model only).
-    pub fn update_knowledge_base(
-        &self,
-        id: &str,
-        patch: &serde_json::Value,
-    ) -> Result<(), String> {
+    pub fn update_knowledge_base(&self, id: &str, patch: &serde_json::Value) -> Result<(), String> {
         let obj = match patch.as_object() {
             Some(o) => o,
             None => return Ok(()),
@@ -797,7 +802,10 @@ impl Db {
 
     pub fn delete_document(&self, doc_id: &str) -> Result<(), String> {
         self.lock()
-            .execute("DELETE FROM knowledge_chunks WHERE doc_id = ?1", params![doc_id])
+            .execute(
+                "DELETE FROM knowledge_chunks WHERE doc_id = ?1",
+                params![doc_id],
+            )
             .map(|_| ())
             .map_err(e2s)
     }
@@ -875,9 +883,17 @@ impl Db {
             let embedding_raw: String = row.get(2).map_err(e2s)?;
             let vec: Vec<f64> = serde_json::from_str(&embedding_raw).unwrap_or_default();
             let score = cosine(query, &vec);
-            scored.push(RetrievedChunk { text, source, score });
+            scored.push(RetrievedChunk {
+                text,
+                source,
+                score,
+            });
         }
-        scored.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
+        scored.sort_by(|a, b| {
+            b.score
+                .partial_cmp(&a.score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
         scored.retain(|s| s.score > 0.0);
         scored.truncate(top_k);
         Ok(scored)
@@ -1308,14 +1324,25 @@ mod tests {
 
         // Index two chunks under one doc; dim captured from the first vector.
         let items = vec![
-            ChunkInput { text: "alpha".into(), embedding: vec![1.0, 0.0] },
-            ChunkInput { text: "beta".into(), embedding: vec![0.0, 1.0] },
+            ChunkInput {
+                text: "alpha".into(),
+                embedding: vec![1.0, 0.0],
+            },
+            ChunkInput {
+                text: "beta".into(),
+                embedding: vec![0.0, 1.0],
+            },
         ];
         let n = db.add_chunks(&kb.id, "doc1", "notes.md", &items).unwrap();
         assert_eq!(n, 2);
         assert_eq!(db.count_chunks(&kb.id).unwrap(), 2);
         // dim is now set on the KB.
-        let kb2 = db.list_knowledge_bases().unwrap().into_iter().next().unwrap();
+        let kb2 = db
+            .list_knowledge_bases()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
         assert_eq!(kb2.dim, Some(2));
 
         // Document listing groups by doc.
@@ -1335,7 +1362,12 @@ mod tests {
             .unwrap();
         db.update_knowledge_base(&kb.id, &serde_json::json!({ "embed_model": null }))
             .unwrap();
-        let kb3 = db.list_knowledge_bases().unwrap().into_iter().next().unwrap();
+        let kb3 = db
+            .list_knowledge_bases()
+            .unwrap()
+            .into_iter()
+            .next()
+            .unwrap();
         assert_eq!(kb3.name, "Renamed");
         assert_eq!(kb3.embed_model, None);
         assert_eq!(kb3.provider_id.as_deref(), Some("openai")); // untouched
@@ -1353,7 +1385,8 @@ mod tests {
         let c = db
             .create_conversation("Trip", &ConversationInit::default())
             .unwrap();
-        db.append_message(&c.id, "user", "hello kangaroo", None).unwrap();
+        db.append_message(&c.id, "user", "hello kangaroo", None)
+            .unwrap();
         db.append_message(&c.id, "assistant", "the kangaroo hops", None)
             .unwrap();
 
@@ -1362,7 +1395,7 @@ mod tests {
         assert_eq!(hits.len(), 2);
         assert!(hits.iter().all(|h| h.conversation_title == "Trip"));
         assert!(hits[0].excerpt_raw.contains('\u{1}')); // <b> marker byte
-        // Malformed MATCH surfaces as an Err (caller swallows it).
+                                                        // Malformed MATCH surfaces as an Err (caller swallows it).
         assert!(db.search_messages("AND", 50).is_err());
 
         // Export captures both messages under the one conversation.
