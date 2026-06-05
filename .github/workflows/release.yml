@@ -248,6 +248,11 @@ jobs:
 
       - name: Build + push
         uses: docker/build-push-action@v7
+        # Don't upload the buildx build-record artifact (*.dockerbuild) — the
+        # Publish job sweeps every artifact into the Release, and that file isn't
+        # a user-facing asset.
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
         with:
           context: .
           file: docker/web.Dockerfile
@@ -278,7 +283,7 @@ jobs:
           node-version: 20
           cache: pnpm
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: 17
@@ -295,7 +300,7 @@ jobs:
           key: android
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
 
       - name: Install NDK + platform + build-tools
         run: sdkmanager "ndk;${NDK_VERSION}" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
@@ -354,7 +359,8 @@ jobs:
       - name: Flatten artifacts
         run: |
           mkdir -p release
-          find artifacts -type f -exec cp -v {} release/ \;
+          # Skip buildx build-record files — not user-facing release assets.
+          find artifacts -type f ! -name '*.dockerbuild' -exec cp -v {} release/ \;
           ls -lah release
 
       # Build latest.json from the desktop bundles + .sig sidecars. Refuses
