@@ -1,0 +1,42 @@
+name: CodeQL
+
+# Passive security scanning. Findings show up under the repo's Security tab.
+# JS/TS is build-free and fast. Rust CodeQL is still public-preview and needs a
+# full Tauri compile (webkit2gtk etc.), so it's intentionally left out to keep
+# this lightweight and quiet — add a `rust` matrix entry later if wanted.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "23 4 * * 1" # weekly, Monday 04:23 UTC
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"

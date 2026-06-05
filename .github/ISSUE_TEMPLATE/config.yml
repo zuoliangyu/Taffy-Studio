@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Question / discussion
+    url: https://github.com/zuoliangyu/Taffy-Studio/discussions
+    about: For questions and open-ended ideas, please use Discussions (enable it in repo Settings if the link 404s).
