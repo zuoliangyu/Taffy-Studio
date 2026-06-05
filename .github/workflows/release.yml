@@ -51,7 +51,7 @@ jobs:
             patchelf
 
       # No `version:` — reads packageManager (pnpm@10.20.0) from package.json.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 20
@@ -122,7 +122,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # taffy-web has no Tauri/system deps — just node + rust.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 20

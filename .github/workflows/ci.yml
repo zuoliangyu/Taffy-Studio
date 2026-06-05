@@ -22,7 +22,7 @@ jobs:
 
       # No `version:` — pnpm/action-setup reads packageManager from package.json
       # (pinned to pnpm@10.20.0), so CI and local stay identical.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -80,7 +80,7 @@ jobs:
 
       # Both generate_context! (src-tauri) and rust-embed (taffy-web) need a
       # built `dist/`, so build the frontend before any cargo step.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 20
