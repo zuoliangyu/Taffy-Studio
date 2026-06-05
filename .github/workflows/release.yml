@@ -123,19 +123,19 @@ jobs:
         include:
           - os: ubuntu-22.04
             label: linux-x86_64
-            target: x86_64-unknown-linux-musl   # fully static — runs on any distro, no libc deps
+            targets: x86_64-unknown-linux-musl   # fully static — runs on any distro, no libc deps
             ext: ''
+          # One universal macOS binary (Intel + Apple Silicon lipo'd together) —
+          # built on the arm64 runner with both targets, mirroring the desktop
+          # universal-apple-darwin job. No Intel runner (macos-13 is retiring and
+          # queues for hours, which used to stall the whole release).
           - os: macos-14
-            label: macos-arm64
-            target: aarch64-apple-darwin
-            ext: ''
-          - os: macos-13
-            label: macos-x86_64
-            target: x86_64-apple-darwin
+            label: macos-universal
+            targets: aarch64-apple-darwin,x86_64-apple-darwin
             ext: ''
           - os: windows-latest
             label: windows-x86_64
-            target: x86_64-pc-windows-msvc
+            targets: x86_64-pc-windows-msvc
             ext: '.exe'
     steps:
       - uses: actions/checkout@v6
@@ -150,7 +150,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.targets }}
 
       # Linux ships a fully static musl binary (rustls + bundled SQLite, so no
       # OpenSSL/glibc to link). musl-tools provides the musl C toolchain.
@@ -165,19 +165,31 @@ jobs:
           key: web-${{ matrix.label }}
 
       - name: Build frontend (web bundle) + taffy-web
+        shell: bash
         run: |
           pnpm install --frozen-lockfile
           pnpm build
-          cargo build -p taffy-web --release --target ${{ matrix.target }}
+          IFS=',' read -ra TARGETS <<< "${{ matrix.targets }}"
+          for t in "${TARGETS[@]}"; do
+            cargo build -p taffy-web --release --target "$t"
+          done
 
       - name: Package binary
         shell: bash
         run: |
-          mkdir -p staged
-          if [ -n "${{ matrix.ext }}" ]; then
-            cp "target/${{ matrix.target }}/release/taffy-web.exe" "staged/taffy-web-${{ matrix.label }}.exe"
+          mkdir -p staged out
+          IFS=',' read -ra TARGETS <<< "${{ matrix.targets }}"
+          if [ "${{ matrix.label }}" = "macos-universal" ]; then
+            # Fuse the per-arch binaries into one fat Mach-O.
+            lipo -create \
+              "target/aarch64-apple-darwin/release/taffy-web" \
+              "target/x86_64-apple-darwin/release/taffy-web" \
+              -output out/taffy-web
+            tar -czf "staged/taffy-web-${{ matrix.label }}.tar.gz" -C out taffy-web
+          elif [ -n "${{ matrix.ext }}" ]; then
+            cp "target/${TARGETS[0]}/release/taffy-web.exe" "staged/taffy-web-${{ matrix.label }}.exe"
           else
-            tar -czf "staged/taffy-web-${{ matrix.label }}.tar.gz" -C "target/${{ matrix.target }}/release" taffy-web
+            tar -czf "staged/taffy-web-${{ matrix.label }}.tar.gz" -C "target/${TARGETS[0]}/release" taffy-web
           fi
           ls -lah staged
 
