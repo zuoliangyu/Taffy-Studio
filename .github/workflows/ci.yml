@@ -18,14 +18,14 @@ jobs:
     name: Frontend (typecheck + build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # No `version:` — pnpm/action-setup reads packageManager from package.json
       # (pinned to pnpm@10.20.0), so CI and local stay identical.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
@@ -40,7 +40,7 @@ jobs:
         run: pnpm build
 
       - name: Upload dist artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -51,7 +51,7 @@ jobs:
     name: Rust (workspace fmt + clippy + check + test)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       # Tauri (src-tauri) needs webkit2gtk etc. even for `cargo check` because
       # generate_context! reads the bundle config + validates plugin manifests.
@@ -80,8 +80,8 @@ jobs:
 
       # Both generate_context! (src-tauri) and rust-embed (taffy-web) need a
       # built `dist/`, so build the frontend before any cargo step.
-      - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
@@ -107,13 +107,13 @@ jobs:
     name: Web image (docker build)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build web image (no push)
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: docker/web.Dockerfile
