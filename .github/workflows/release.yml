@@ -39,6 +39,24 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      # The committed src-tauri/.cargo/config.toml routes crates.io through
+      # rsproxy.cn for local CN dev. tauri runs cargo from src-tauri/, so it
+      # picks that up — and from GitHub's overseas runners the mirror is slow and
+      # intermittently fails crate downloads (curl failed). Build from crates.io
+      # in CI; keep the net/http tuning. (The web job uses the repo-root config,
+      # which has no mirror, so it's unaffected.)
+      - name: CI builds from crates.io (mirror is local-only)
+        shell: bash
+        run: |
+          cat > src-tauri/.cargo/config.toml <<'CFG'
+          # Overwritten by CI — see release.yml. Local dev keeps the rsproxy.cn mirror.
+          [net]
+          git-fetch-with-cli = true
+          retry = 5
+          [http]
+          timeout = 60
+          CFG
+
       - name: Install Linux system deps
         if: runner.os == 'Linux'
         run: |
@@ -284,6 +302,20 @@ jobs:
 
       - name: Install JS deps
         run: pnpm install --frozen-lockfile
+
+      # tauri runs cargo from src-tauri/, which picks up the committed rsproxy.cn
+      # mirror — slow/flaky from overseas runners. Build from crates.io in CI.
+      - name: CI builds from crates.io (mirror is local-only)
+        shell: bash
+        run: |
+          cat > src-tauri/.cargo/config.toml <<'CFG'
+          # Overwritten by CI — see release.yml. Local dev keeps the rsproxy.cn mirror.
+          [net]
+          git-fetch-with-cli = true
+          retry = 5
+          [http]
+          timeout = 60
+          CFG
 
       - name: Build APK (aarch64 + x86_64)
         run: |
