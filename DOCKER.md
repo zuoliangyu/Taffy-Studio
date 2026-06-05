@@ -32,7 +32,7 @@ cd app
 .\scripts\build-linux.ps1
 ```
 
-产物在 `./dist-linux/`：
+产物在 `./dist-out/linux/`：
 - `*.deb` —— Debian/Ubuntu 包
 - `*.AppImage` —— 通用 Linux 单文件（推荐侧载）
 
@@ -50,7 +50,7 @@ cd app
 
 **第一次会下载 ~6 GB 的 Android SDK + NDK**，之后镜像层缓存住，重建只跑 Rust + Gradle。
 
-产物在 `./dist-android/`：
+产物在 `./dist-out/android/`：
 - `*-debug.apk` —— 直接用 `adb install` 或拉到手机点开装。
 
 ### 用 docker compose 直接跑

@@ -14,9 +14,10 @@ import {
   importConversationsFromJson,
   type ImportSummary,
 } from '../lib/db'
-import { fsReadTextAbs, fsWriteTextAbs } from '../lib/ipc'
+import { fsReadTextAbs, fsWriteTextAbs, getPlatform } from '../lib/ipc'
 import {
   backupNow,
+  createDesktopEntry,
   openConfigDir,
   resetDatabase,
   storageInfo,
@@ -79,6 +80,8 @@ export function StoragePanel() {
   const [error, setError] = useState<string | null>(null)
   const [confirmingReset, setConfirmingReset] = useState(false)
   const [lastImport, setLastImport] = useState<ImportSummary | null>(null)
+  const [isLinux, setIsLinux] = useState(false)
+  const [launcherPath, setLauncherPath] = useState<string | null>(null)
 
   const refresh = useCallback(async () => {
     // storageInfo (DB path, on-disk backups) is a desktop-only concept; the web
@@ -94,7 +97,21 @@ export function StoragePanel() {
 
   useEffect(() => {
     refresh()
+    // The "create desktop entry" action only makes sense on a Linux desktop.
+    if (IS_TAURI) getPlatform().then((p) => setIsLinux(p === 'linux')).catch(() => {})
   }, [refresh])
+
+  async function onCreateLauncher() {
+    setBusy('launcher')
+    setError(null)
+    try {
+      setLauncherPath(await createDesktopEntry())
+    } catch (e) {
+      setError(String(e))
+    } finally {
+      setBusy(null)
+    }
+  }
 
   async function onBackupNow() {
     setBusy('backup')
@@ -303,6 +320,17 @@ export function StoragePanel() {
             >
               {busy === 'open' ? '…' : t('storage.openFolder')}
             </button>
+            {isLinux && (
+              <button
+                type="button"
+                className="ghost small"
+                onClick={onCreateLauncher}
+                disabled={busy !== null}
+                title={t('storage.createLauncherHint')}
+              >
+                {busy === 'launcher' ? '…' : t('storage.createLauncher')}
+              </button>
+            )}
             <button
               type="button"
               className="ghost small"
@@ -330,6 +358,13 @@ export function StoragePanel() {
               {t('storage.reset')}
             </button>
           </div>
+
+          {launcherPath && (
+            <div className="storage-notice">
+              {t('storage.launcherCreated')}
+              <code className="path"> {launcherPath}</code>
+            </div>
+          )}
 
           {lastImport && (
             <div className="storage-notice">

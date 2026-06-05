@@ -97,6 +97,10 @@ struct StdioConn {
     stdin: Arc<Mutex<ChildStdin>>,
     pending: Pending,
     next_id: AtomicI64,
+    /// Windows: kills the whole process tree on drop (see `win_job`). Held only
+    /// to tie the job's lifetime to the connection.
+    #[cfg(target_os = "windows")]
+    _job: Option<win_job::KillOnDropJob>,
 }
 
 /// Remote endpoint + the session id the Streamable-HTTP transport threads.
@@ -366,13 +370,101 @@ pub async fn connect(state: &McpState, cfg: McpServerConfig) -> Result<Vec<McpTo
     Ok(tools)
 }
 
+/// Windows process-tree teardown. We launch stdio servers through `cmd /c`, so
+/// killing the child only kills the shim — the real `node`/`python` grandchild
+/// is orphaned. Assigning the child to a Job Object with KILL_ON_JOB_CLOSE makes
+/// closing the job handle (on drop) terminate the entire tree.
+#[cfg(target_os = "windows")]
+mod win_job {
+    use windows_sys::Win32::Foundation::{CloseHandle, HANDLE};
+    use windows_sys::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+
+    /// A Job Object that kills every assigned process when dropped.
+    pub struct KillOnDropJob(HANDLE);
+
+    // The handle is owned solely by this struct and only touched on drop.
+    unsafe impl Send for KillOnDropJob {}
+    unsafe impl Sync for KillOnDropJob {}
+
+    impl KillOnDropJob {
+        /// Create a kill-on-close job and assign `process` (a child's raw
+        /// handle) to it. Returns `None` if any Win32 call fails — spawning
+        /// still succeeds, we just lose the tree-kill guarantee.
+        pub fn assign(process: HANDLE) -> Option<Self> {
+            unsafe {
+                let job = CreateJobObjectW(std::ptr::null(), std::ptr::null());
+                if job.is_null() {
+                    return None;
+                }
+                let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = std::mem::zeroed();
+                info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+                let ok = SetInformationJobObject(
+                    job,
+                    JobObjectExtendedLimitInformation,
+                    std::ptr::addr_of!(info).cast(),
+                    std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+                );
+                if ok == 0 || AssignProcessToJobObject(job, process) == 0 {
+                    CloseHandle(job);
+                    return None;
+                }
+                Some(KillOnDropJob(job))
+            }
+        }
+    }
+
+    impl Drop for KillOnDropJob {
+        fn drop(&mut self) {
+            // KILL_ON_JOB_CLOSE → closing the last handle terminates the tree.
+            unsafe { CloseHandle(self.0) };
+        }
+    }
+}
+
+/// Resolve the program + args to actually spawn for a stdio server. On Windows,
+/// bare interpreter names (`npx`, `npm`, `uvx`, `dnx`, …) are `.cmd`/`.bat`
+/// shims that `CreateProcess` can't launch directly, so they must go through
+/// `cmd /c`; an explicit `*.exe` path or `cmd` itself is spawned unchanged.
+/// Other platforms always spawn the command verbatim. This is what lets a
+/// market-installed `npx -y <pkg>` server start on a Windows desktop.
+fn resolve_stdio_command(command: &str, args: &[String]) -> (String, Vec<String>) {
+    #[cfg(target_os = "windows")]
+    {
+        if windows_needs_cmd_shim(command) {
+            let mut wrapped = Vec::with_capacity(args.len() + 2);
+            wrapped.push("/c".to_string());
+            wrapped.push(command.to_string());
+            wrapped.extend(args.iter().cloned());
+            return ("cmd".to_string(), wrapped);
+        }
+    }
+    (command.to_string(), args.to_vec())
+}
+
+/// Whether a Windows command must be run through `cmd /c` (i.e. it's a bare
+/// name that resolves to a `.cmd`/`.bat` shim rather than an executable).
+#[cfg(target_os = "windows")]
+fn windows_needs_cmd_shim(command: &str) -> bool {
+    let lower = command.trim().to_ascii_lowercase();
+    !(lower == "cmd"
+        || lower == "cmd.exe"
+        || lower.ends_with(".exe")
+        || lower.ends_with(".com"))
+}
+
 /// Spawn the configured command and wire up the stdio JSON-RPC reader.
 fn build_stdio_server(cfg: &McpServerConfig) -> Result<McpServer, String> {
+    let (program, args) = resolve_stdio_command(&cfg.command, &cfg.args);
+
     // Build a std Command (so we can set Windows creation_flags via the std
     // CommandExt trait), then convert to tokio's async Command.
-    let mut std_command = std::process::Command::new(&cfg.command);
+    let mut std_command = std::process::Command::new(&program);
     std_command
-        .args(&cfg.args)
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -395,6 +487,14 @@ fn build_stdio_server(cfg: &McpServerConfig) -> Result<McpServer, String> {
     let mut child = command
         .spawn()
         .map_err(|e| format!("failed to spawn '{}': {e}", cfg.command))?;
+
+    // Bind the child (and any grandchildren it spawns) to a kill-on-close Job
+    // Object, so disconnecting tears down the whole tree rather than orphaning
+    // the `node`/`python` process behind the `cmd /c` shim.
+    #[cfg(target_os = "windows")]
+    let job = child
+        .raw_handle()
+        .and_then(|h| win_job::KillOnDropJob::assign(h as _));
 
     let stdin = child
         .stdin
@@ -439,6 +539,8 @@ fn build_stdio_server(cfg: &McpServerConfig) -> Result<McpServer, String> {
             stdin: Arc::new(Mutex::new(stdin)),
             pending,
             next_id: AtomicI64::new(1),
+            #[cfg(target_os = "windows")]
+            _job: job,
         }),
     })
 }
@@ -571,6 +673,34 @@ mod tests {
         let sse = "event: message\r\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}\r\n\r\n";
         let v = extract_rpc_response(sse, true).expect("sse response");
         assert_eq!(v["result"]["ok"], json!(true));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_wraps_shim_commands_in_cmd() {
+        // Bare interpreter names go through `cmd /c`.
+        let (prog, args) =
+            resolve_stdio_command("npx", &["-y".into(), "@scope/server".into()]);
+        assert_eq!(prog, "cmd");
+        assert_eq!(args, vec!["/c", "npx", "-y", "@scope/server"]);
+        // Explicit executables and `cmd` itself are spawned unchanged.
+        assert_eq!(
+            resolve_stdio_command("node.exe", &["s.js".into()]),
+            ("node.exe".to_string(), vec!["s.js".to_string()])
+        );
+        let (prog, _) = resolve_stdio_command("cmd", &["/c".into(), "npx".into()]);
+        assert_eq!(prog, "cmd");
+        assert!(windows_needs_cmd_shim("uvx"));
+        assert!(!windows_needs_cmd_shim("C:/tools/server.exe"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn non_windows_spawns_command_verbatim() {
+        assert_eq!(
+            resolve_stdio_command("npx", &["-y".into(), "pkg".into()]),
+            ("npx".to_string(), vec!["-y".to_string(), "pkg".to_string()])
+        );
     }
 
     #[test]

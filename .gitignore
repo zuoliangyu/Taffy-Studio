@@ -5,32 +5,37 @@ node_modules/
 .pnpm-store/
 
 # ============================================================
-# Build outputs
+# Build outputs   —   build matrix: linux · windows · mac · ios · android · web · docker
 # ============================================================
-# Vite / TypeScript
+# Vite frontend build (intermediate; embedded into the desktop/web binaries).
 dist/
 dist-ssr/
 *.tsbuildinfo
 node_modules/.tmp/
 
-# Tauri Rust target — large, regenerated per machine.
+# Rust build cache — huge, regenerated per machine.
+# This is a Cargo workspace, so EVERY crate (src-tauri, taffy-core, taffy-web)
+# builds into the single workspace-root ./target. Windows (.exe/.msi) and macOS
+# (.app/.dmg) bundles land in target/release/bundle/ — already covered here.
+# src-tauri/target/ is the legacy pre-workspace path; nothing writes there
+# anymore, kept only so old checkouts stay clean.
 # NOTE: Cargo.lock IS committed (this is an app, not a library).
-# With the Cargo workspace, the build dir is the workspace-root ./target;
-# the legacy src-tauri/target/ path is kept for older checkouts.
 target/
 src-tauri/target/
 
-# Tauri generated mobile projects (Android/iOS scaffolding produced by
-# `tauri android init` / `tauri ios init`). Regenerated on demand and
-# tends to drift between machines / Xcode versions.
+# Tauri generated native mobile projects (Android/iOS scaffolding from
+# `tauri android init` / `tauri ios init`). Regenerated on demand; drifts
+# between machines / Xcode / NDK versions.
 src-tauri/gen/
 
-# Docker-driven cross-platform build outputs (see DOCKER.md).
-dist-linux/
-dist-android/
-
-# Standalone web-server binary output (scripts/build-web.*).
-dist-web/
+# All packaged release artifacts go under one roof (scripts/build-*.{ps1,sh}):
+#   dist-out/linux/    (.deb .AppImage .rpm)
+#   dist-out/android/  (.apk .aab)
+#   dist-out/ios/      (.ipa)
+#   dist-out/web/      (single-file taffy-web[.exe])
+#   (docker -> image in the local daemon, no repo file to ignore)
+# One folder to ignore; any transfer zip you drop inside is covered too.
+dist-out/
 
 # ============================================================
 # Internal-only docs — planning / WIP, not for the public repo.

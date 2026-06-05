@@ -2,7 +2,7 @@
 #
 # Usage:
 #   docker build -f docker/linux.Dockerfile -t taffy-studio-linux .
-#   docker run --rm -v ${PWD}/dist-linux:/out taffy-studio-linux
+#   docker run --rm -v ${PWD}/dist-out/linux:/out taffy-studio-linux
 # Or use docker-compose (see docker-compose.yml).
 #
 # Output: /out/{*.deb, *.AppImage, *.rpm if rpm-build is present}.
@@ -10,7 +10,7 @@
 FROM ubuntu:22.04 AS build
 
 ARG NODE_MAJOR=20
-ARG RUST_VERSION=1.82.0
+ARG RUST_VERSION=1.95.0
 ARG PNPM_VERSION=9
 
 ENV DEBIAN_FRONTEND=noninteractive \
@@ -32,6 +32,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libssl-dev \
     libwebkit2gtk-4.1-dev \
     libxdo-dev \
+    mold \
     patchelf \
     pkg-config \
     wget \
@@ -66,11 +67,15 @@ RUN pnpm install --frozen-lockfile || pnpm install
 # Two-stage: frontend, then bundle. tauri-cli runs the frontend build through
 # beforeBuildCommand, but we pre-build to surface JS errors earlier.
 RUN pnpm build
-RUN pnpm tauri:build --bundles deb,appimage
+# Link with mold instead of GNU ld — typically several times faster on the final
+# link step. `mold -run` reroutes every `ld` call in the cargo/rustc child-process
+# tree, so no rustflags or gcc-version juggling is needed (Ubuntu 22.04 ships
+# gcc 11, which predates gcc's own -fuse-ld=mold support).
+RUN mold -run pnpm tauri:build --bundles deb,appimage
 
 # --- Final stage: copy the artifacts into /out at runtime ---
 FROM ubuntu:22.04 AS export
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates rsync && rm -rf /var/lib/apt/lists/*
-COPY --from=build /app/src-tauri/target/release/bundle /bundle
+COPY --from=build /app/target/release/bundle /bundle
 VOLUME ["/out"]
 CMD ["sh", "-c", "rsync -a /bundle/ /out/ && ls -lah /out"]

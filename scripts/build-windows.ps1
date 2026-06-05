@@ -31,10 +31,10 @@ Ensure-AppDeps $root
 # probing that's brittle across Win editions.
 
 Write-Step "Building Windows installer ($Targets)"
-Write-Ok "First run downloads sccache + compiles all Rust crates; subsequent builds reuse target/."
+Write-Ok "First run compiles all Rust crates from scratch (~10 min); later builds reuse ./target."
 Invoke-Pnpm -Root $root -Args @('tauri', 'build', '--bundles', $Targets)
 
-$bundleDir = Join-Path $root 'src-tauri\target\release\bundle'
+$bundleDir = Join-Path $root 'target\release\bundle'
 Write-Done "Done. Artifacts:"
 if (Test-Path $bundleDir) {
     Get-ChildItem -Recurse $bundleDir -Include *.exe, *.msi |

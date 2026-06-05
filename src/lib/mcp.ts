@@ -78,6 +78,23 @@ export function mcpCallTool(
   return api.mcpCallTool(serverId, name, args)
 }
 
+/** Result of unpacking a user-authored stdio MCP zip (a `taffy-mcp.json`
+ *  manifest + code). `command`/`args` already have their `${dir}` tokens
+ *  resolved to the managed install directory, so they're ready to spawn. */
+export interface McpImportResult {
+  name: string
+  command: string
+  args: string[]
+  env: string[]
+}
+
+/** Import a self-authored stdio MCP server from a zip (desktop / server-side).
+ *  Returns the manifest-derived spawn config; the caller wraps it into an
+ *  `McpServerConfig` and persists it. */
+export function mcpImportZip(bytes: ArrayBuffer): Promise<McpImportResult> {
+  return api.mcpImportZip(bytes)
+}
+
 /** Convert connected tools into the ToolSpec[] a ChatRequest carries. */
 export function toolsToSpecs(tools: McpTool[]): ToolSpec[] {
   return tools.map((t) => ({

@@ -523,6 +523,48 @@ fn open_config_dir(app: AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+/// Create a Linux `.desktop` launcher entry for the running executable, so the
+/// app shows up in the application menu (a raw, unpackaged binary otherwise
+/// won't appear). Writes to `$XDG_DATA_HOME/applications` (or
+/// `~/.local/share/applications`) and returns the written path. Linux-only.
+#[tauri::command]
+fn create_desktop_entry() -> Result<String, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+        let base = std::env::var_os("XDG_DATA_HOME")
+            .map(PathBuf::from)
+            .filter(|p| !p.as_os_str().is_empty())
+            .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".local/share")))
+            .ok_or_else(|| "cannot resolve the XDG data directory".to_string())?;
+        let apps = base.join("applications");
+        std::fs::create_dir_all(&apps).map_err(|e| e.to_string())?;
+        let dest = apps.join("taffy-studio.desktop");
+        let content = format!(
+            "[Desktop Entry]\n\
+             Type=Application\n\
+             Name=Taffy Studio\n\
+             Comment=AI workbench\n\
+             Exec={} %U\n\
+             Icon=taffy-studio\n\
+             Terminal=false\n\
+             Categories=Utility;Development;\n\
+             StartupWMClass=Taffy Studio\n",
+            exe.display()
+        );
+        std::fs::write(&dest, content).map_err(|e| e.to_string())?;
+        // Best-effort menu refresh; ignored if the tool isn't installed.
+        let _ = std::process::Command::new("update-desktop-database")
+            .arg(&apps)
+            .status();
+        Ok(dest.to_string_lossy().into_owned())
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        Err("Creating a desktop entry is only supported on Linux".into())
+    }
+}
+
 // ---------- Data layer (taffy-core::db) ----------
 //
 // Thin Tauri commands over the shared SQLite layer. The DB handle is opened +
@@ -768,6 +810,16 @@ fn skill_read(
         .ok_or_else(|| format!("skill '{name}' not found"))
 }
 
+// ---------- MCP zip import (self-authored stdio servers) ----------
+
+#[tauri::command]
+fn mcp_import_zip(
+    store: State<'_, Arc<taffy_core::McpImportStore>>,
+    bytes: Vec<u8>,
+) -> Result<taffy_core::McpImportResult, String> {
+    store.import_zip(&bytes)
+}
+
 // ---------- Full-text search + JSON export/import ----------
 
 #[tauri::command]
@@ -838,6 +890,9 @@ pub fn run() {
             // Skill packages live in a `skills/` dir beside the DB.
             let skills_root = db_dir(app.handle())?.join("skills");
             app.manage(Arc::new(taffy_core::SkillStore::new(skills_root)));
+            // Imported stdio MCP servers live in `mcp-servers/` beside the DB.
+            let mcp_root = db_dir(app.handle())?.join("mcp-servers");
+            app.manage(Arc::new(taffy_core::McpImportStore::new(mcp_root)));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -854,6 +909,7 @@ pub fn run() {
             backup_now,
             reset_database,
             open_config_dir,
+            create_desktop_entry,
             fs_write_text_abs,
             fs_read_text_abs,
             mcp_connect,
@@ -894,6 +950,8 @@ pub fn run() {
             skill_import_zip,
             skill_delete,
             skill_read,
+            // MCP zip import (taffy-core::mcp_import)
+            mcp_import_zip,
             // search + export/import (taffy-core::db)
             search_messages,
             export_conversations,

@@ -3158,6 +3158,201 @@ button.icon-only {
   display: flex;
   justify-content: flex-end;
 }
+.mcp-foot-split { justify-content: space-between; }
+/* Selects in the MCP/market forms match the text inputs. */
+.mcp-field select {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: normal;
+  padding: 7px 10px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 8px;
+  background: hsl(var(--background) / 0.7);
+  color: hsl(var(--foreground));
+  outline: none;
+}
+.mcp-field select:focus { border-color: hsl(var(--primary) / 0.6); }
+
+/* ===== MCP market ===== */
+.market {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.market-bar {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.market-source {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 160px;
+}
+.market-source select {
+  font: inherit;
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 8px;
+  background: hsl(var(--background) / 0.7);
+  color: hsl(var(--foreground));
+  outline: none;
+}
+.market-search {
+  display: flex;
+  gap: 8px;
+}
+.market-search input {
+  flex: 1;
+  font: inherit;
+  font-size: 12.5px;
+  padding: 7px 10px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  border-radius: 8px;
+  background: hsl(var(--background) / 0.7);
+  color: hsl(var(--foreground));
+  outline: none;
+}
+.market-search input:focus { border-color: hsl(var(--primary) / 0.6); }
+.market-addsource {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid hsl(var(--border) / 0.55);
+  border-radius: 12px;
+  background: hsl(var(--background) / 0.5);
+}
+.market-addsource-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.market-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.market-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid hsl(var(--border) / 0.55);
+  border-radius: 12px;
+  background: hsl(var(--background) / 0.5);
+}
+.market-card-main {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+.market-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.market-ver {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+.market-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  letter-spacing: 0.02em;
+}
+.market-badge.remote {
+  background: hsl(var(--success) / 0.16);
+  color: hsl(var(--success));
+}
+.market-badge.local {
+  background: hsl(var(--muted) / 0.6);
+  color: hsl(var(--muted-foreground));
+}
+.market-badge.deprecated {
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive));
+}
+.market-repo {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.market-foot {
+  display: flex;
+  justify-content: center;
+}
+
+/* ===== MCP market — install dialog ===== */
+.market-install { width: min(560px, calc(100vw - 32px)); gap: 12px; }
+.market-install h3 { margin: 0; font-size: 16px; }
+.market-install-opts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.market-opt {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.market-cmd {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.market-cmd code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: hsl(var(--muted) / 0.4);
+  border: 1px solid hsl(var(--border) / 0.4);
+  word-break: break-all;
+}
+.market-warning {
+  font-size: 12px;
+  color: hsl(var(--warning-foreground, var(--foreground)));
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: hsl(var(--warning) / 0.12);
+  border: 1px solid hsl(var(--warning) / 0.35);
+}
+.market-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.market-tag {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 600;
+}
+.market-tag.req { color: hsl(var(--primary)); }
+.market-tag.sec { color: hsl(var(--destructive)); }
+.market-connectnow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: hsl(var(--foreground));
+}
+.market-install-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
 
 /* ============================================================
    17. Knowledge panel (Settings)

@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Runs the multi-stage build in docker/linux.Dockerfile, then extracts the
-  bundle to ./dist-linux/. First build is ~10-15 min; later builds reuse
+  bundle to ./dist-out/linux/. First build is ~10-15 min; later builds reuse
   Docker layer cache.
 
 .PARAMETER NoCache
@@ -31,13 +31,13 @@ try {
     & docker @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "docker compose build failed." }
 
-    Write-Step "Extracting artifacts to dist-linux/"
-    New-Item -ItemType Directory -Force -Path 'dist-linux' | Out-Null
+    Write-Step "Extracting artifacts to dist-out/linux/"
+    New-Item -ItemType Directory -Force -Path 'dist-out/linux' | Out-Null
     & docker compose run --rm linux
     if ($LASTEXITCODE -ne 0) { throw "docker compose run failed." }
 
     Write-Done "Linux artifacts:"
-    Get-ChildItem -Recurse 'dist-linux' -Include *.deb, *.AppImage, *.rpm -ErrorAction SilentlyContinue |
+    Get-ChildItem -Recurse 'dist-out/linux' -Include *.deb, *.AppImage, *.rpm -ErrorAction SilentlyContinue |
         Select-Object FullName, @{N='Size';E={"{0:N1} MB" -f ($_.Length / 1MB)}} |
         Format-Table -AutoSize
 }

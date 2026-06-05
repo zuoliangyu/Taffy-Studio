@@ -31,3 +31,9 @@ export function resetDatabase(): Promise<void> {
 export function openConfigDir(): Promise<void> {
   return api.openConfigDir()
 }
+
+/** Create a Linux `.desktop` launcher entry for the app; returns its path.
+ *  Linux desktop only — rejects elsewhere. */
+export function createDesktopEntry(): Promise<string> {
+  return api.createDesktopEntry()
+}

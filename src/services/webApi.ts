@@ -22,7 +22,7 @@ import type {
   MessageAttachment,
   SearchHitRaw,
 } from '../lib/db'
-import type { McpServerConfig, McpTool } from '../lib/mcp'
+import type { McpImportResult, McpServerConfig, McpTool } from '../lib/mcp'
 import type {
   ChunkInput,
   DocSummary,
@@ -221,6 +221,16 @@ export function mcpCallTool(
   return postJson<string>('/api/mcp/call', { serverId, name, args })
 }
 
+export async function mcpImportZip(bytes: ArrayBuffer): Promise<McpImportResult> {
+  const tok =
+    typeof localStorage !== 'undefined' ? localStorage.getItem('taffy_token') : null
+  const headers: Record<string, string> = { 'content-type': 'application/zip' }
+  if (tok) headers.authorization = `Bearer ${tok}`
+  const r = await fetch('/api/mcp/import-zip', { method: 'POST', headers, body: bytes })
+  if (!r.ok) throw new Error(`HTTP ${r.status}: ${await r.text().catch(() => '')}`)
+  return r.json() as Promise<McpImportResult>
+}
+
 // ---------- RAG (knowledge bases) ----------
 
 const kbPath = (id: string) => `/api/rag/kbs/${encodeURIComponent(id)}`
@@ -336,6 +346,10 @@ export function resetDatabase(): Promise<void> {
 
 export function openConfigDir(): Promise<void> {
   return notImpl('openConfigDir')
+}
+
+export function createDesktopEntry(): Promise<string> {
+  return notImpl('createDesktopEntry')
 }
 
 // ---------- SQLite — semantic ops ----------

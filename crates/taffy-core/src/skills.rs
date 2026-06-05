@@ -187,7 +187,8 @@ impl SkillStore {
 }
 
 /// A skill name must be one safe path segment (no separators, `..`, or hidden).
-fn sanitize_name(name: &str) -> Option<String> {
+/// Shared with `mcp_import` (managed MCP-server dir names).
+pub(crate) fn sanitize_name(name: &str) -> Option<String> {
     let name = name.trim();
     if name.is_empty()
         || name.starts_with('.')
@@ -202,8 +203,9 @@ fn sanitize_name(name: &str) -> Option<String> {
 }
 
 /// Normalize a zip entry / relative path to a safe forward-slash path (rejects
-/// absolute, `..`, and drive/scheme parts — the zip-slip guard).
-fn sanitize_rel_path(path: &str) -> Option<String> {
+/// absolute, `..`, and drive/scheme parts — the zip-slip guard). Shared with
+/// `mcp_import`.
+pub(crate) fn sanitize_rel_path(path: &str) -> Option<String> {
     let mut parts = Vec::new();
     for seg in path.replace('\\', "/").split('/') {
         match seg {
@@ -221,7 +223,8 @@ fn sanitize_rel_path(path: &str) -> Option<String> {
 }
 
 /// Resolve `rel` under `base`, guaranteeing the result stays within `base`.
-fn resolve_within(base: &Path, rel: &str) -> Option<PathBuf> {
+/// Shared with `mcp_import`.
+pub(crate) fn resolve_within(base: &Path, rel: &str) -> Option<PathBuf> {
     Some(base.join(sanitize_rel_path(rel)?))
 }
 

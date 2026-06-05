@@ -10,3 +10,21 @@
 [workspace]
 members = ["src-tauri", "crates/taffy-core", "crates/taffy-web"]
 resolver = "2"
+
+# ===========================================================================
+# Build profiles  —  tuned for fast iteration; release output unchanged.
+# Workspace-level, so every member (src-tauri, taffy-core, taffy-web) inherits.
+# ===========================================================================
+
+[profile.dev]
+# `line-tables-only` keeps panic locations + readable backtraces but drops the
+# heavy DWARF that dominates link time and disk usage. Big incremental-build win
+# with no practical debugging loss for app work. (Was the default "full" = 2.)
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+# Compile third-party deps with light optimisation. They change rarely, so the
+# cost is paid once and then cached; in return the dev binary and `tauri dev`
+# run noticeably faster. Your own crates stay at opt-level 0 for fast recompiles.
+# Trade-off: the *first* (cold) build is a bit slower — cached builds are not.
+opt-level = 1

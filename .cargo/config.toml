@@ -1,0 +1,38 @@
+# Cargo build configuration shared by every crate in the workspace.
+# (Build *profiles* live in Cargo.toml; linker / rustflags / env live here.)
+#
+# ===========================================================================
+# Faster linkers  —  usually the single biggest compile-time win.
+# Linking is 3–10x faster with lld/mold than the platform default. Each block
+# is COMMENTED OUT because it needs its linker installed on the machine first;
+# a wrong/missing linker breaks the build, so enable per-platform deliberately.
+# ===========================================================================
+
+# --- Linux (also the Docker linux/android builds) --------------------------
+# Install one of:
+#   Debian/Ubuntu:  sudo apt-get install -y mold     # fastest
+#               or: sudo apt-get install -y lld clang
+# Then uncomment (mold shown; swap for lld if you installed that):
+# [target.x86_64-unknown-linux-gnu]
+# linker = "clang"
+# rustflags = ["-C", "link-arg=-fuse-ld=mold"]   # or: -fuse-ld=lld
+
+# --- Windows (MSVC) --------------------------------------------------------
+# `rust-lld` ships WITH the Rust toolchain — no separate install. Verify a full
+# `tauri build` still succeeds on your box before relying on it, then uncomment:
+# [target.x86_64-pc-windows-msvc]
+# linker = "rust-lld.exe"
+
+# --- macOS -----------------------------------------------------------------
+# Xcode 15+ ships a fast linker (ld-prime) used by default — no change needed.
+# Older setups can install lld:  brew install llvm  then point at ld64.lld.
+
+# ===========================================================================
+# Notes
+# ===========================================================================
+# * Incremental compilation is already ON by default for the dev profile;
+#   no need to force it here.
+# * sccache (compiler-output cache that survives `target/` wipes and is shared
+#   across branches) is intentionally NOT wired here — it needs installing and
+#   conflicts with incremental, so it belongs in the CI/Docker path, not local
+#   dev. See the build scripts / CI workflow if you decide to add it.

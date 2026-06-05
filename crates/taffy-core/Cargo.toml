@@ -44,5 +44,15 @@ dirs = "6"
 # (no bzip2/zstd/aes); pure-Rust miniz_oxide so there's no system lib.
 zip = { version = "2", default-features = false, features = ["deflate"] }
 
+# Windows only: a Job Object so killing a stdio MCP server (which we launch via
+# `cmd /c npx …`) tears down the whole process tree, not just the cmd.exe shim.
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_JobObjects",
+  "Win32_System_Threading",
+] }
+
 [dev-dependencies]
 tempfile = "3"

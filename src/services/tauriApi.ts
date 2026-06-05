@@ -21,7 +21,7 @@ import type {
   StreamEvent,
   StreamHandle,
 } from '../lib/llm'
-import type { McpServerConfig, McpTool } from '../lib/mcp'
+import type { McpImportResult, McpServerConfig, McpTool } from '../lib/mcp'
 import type {
   ChunkInput,
   DocSummary,
@@ -138,6 +138,12 @@ export function mcpCallTool(
   return invoke<string>('mcp_call_tool', { serverId, name, args })
 }
 
+export function mcpImportZip(bytes: ArrayBuffer): Promise<McpImportResult> {
+  return invoke<McpImportResult>('mcp_import_zip', {
+    bytes: Array.from(new Uint8Array(bytes)),
+  })
+}
+
 // ---------- RAG (knowledge bases) ----------
 
 export function ragListKbs(): Promise<KnowledgeBase[]> {
@@ -243,6 +249,10 @@ export function resetDatabase(): Promise<void> {
 
 export function openConfigDir(): Promise<void> {
   return invoke<void>('open_config_dir')
+}
+
+export function createDesktopEntry(): Promise<string> {
+  return invoke<string>('create_desktop_entry')
 }
 
 // ---------- SQLite — semantic ops (taffy-core::db via Tauri commands) ----------

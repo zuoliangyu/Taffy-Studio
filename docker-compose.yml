@@ -1,8 +1,8 @@
 # Two artifact-producing services + one CI check service.
 #
 #   docker compose run --rm ci         # Run the same checks as GitHub Actions (~5 min, repeatable)
-#   docker compose run --rm linux      # Produce ./dist-linux/{*.deb, *.AppImage}
-#   docker compose run --rm android    # Produce ./dist-android/{*.apk}
+#   docker compose run --rm linux      # Produce ./dist-out/linux/{*.deb, *.AppImage}
+#   docker compose run --rm android    # Produce ./dist-out/android/{*.apk}
 #
 # Tip: the *first* build of `android` is slow (~6 GB SDK+NDK download).
 # Subsequent rebuilds reuse the layer cache. The `ci` image is much smaller
@@ -31,7 +31,7 @@ services:
       dockerfile: docker/linux.Dockerfile
     image: taffy-studio-linux:latest
     volumes:
-      - ./dist-linux:/out
+      - ./dist-out/linux:/out
 
   android:
     build:
@@ -43,7 +43,7 @@ services:
         NDK_VERSION: "27.0.12077973"
     image: taffy-studio-android:latest
     volumes:
-      - ./dist-android:/out
+      - ./dist-out/android:/out
       # Optional: mount a release keystore for signed APKs.
       # - ./keys/release.keystore:/keys/release.keystore:ro
 

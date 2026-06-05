@@ -5,7 +5,7 @@
 
 .DESCRIPTION
   Runs the multi-stage build in docker/android.Dockerfile, then extracts the
-  APK to ./dist-android/. First build is heavy (~30 min, ~6 GB SDK+NDK
+  APK to ./dist-out/android/. First build is heavy (~30 min, ~6 GB SDK+NDK
   download) — those layers cache and later builds are fast.
 
 .PARAMETER NoCache
@@ -31,13 +31,13 @@ try {
     & docker @buildArgs
     if ($LASTEXITCODE -ne 0) { throw "docker compose build failed." }
 
-    Write-Step "Extracting artifacts to dist-android/"
-    New-Item -ItemType Directory -Force -Path 'dist-android' | Out-Null
+    Write-Step "Extracting artifacts to dist-out/android/"
+    New-Item -ItemType Directory -Force -Path 'dist-out/android' | Out-Null
     & docker compose run --rm android
     if ($LASTEXITCODE -ne 0) { throw "docker compose run failed." }
 
     Write-Done "Android artifacts:"
-    Get-ChildItem -Recurse 'dist-android' -Include *.apk, *.aab -ErrorAction SilentlyContinue |
+    Get-ChildItem -Recurse 'dist-out/android' -Include *.apk, *.aab -ErrorAction SilentlyContinue |
         Select-Object FullName, @{N='Size';E={"{0:N1} MB" -f ($_.Length / 1MB)}} |
         Format-Table -AutoSize
 }

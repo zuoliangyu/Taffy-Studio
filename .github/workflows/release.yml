@@ -223,14 +223,14 @@ jobs:
 
       - name: Extract APKs / AABs
         run: |
-          mkdir -p dist-android
-          docker run --rm -v "${PWD}/dist-android:/out" taffy-studio-android:ci
-          ls -lah dist-android
+          mkdir -p dist-out/android
+          docker run --rm -v "${PWD}/dist-out/android:/out" taffy-studio-android:ci
+          ls -lah dist-out/android
 
       - uses: actions/upload-artifact@v4
         with:
           name: android
-          path: dist-android/
+          path: dist-out/android/
           if-no-files-found: error
 
   # ---- Aggregate + publish GH Release --------------------------------

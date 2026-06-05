@@ -40,7 +40,7 @@ build_mac() {
     step "Building macOS bundle"
     (cd "$ROOT" && pnpm tauri build)
     done_ "macOS artifacts:"
-    find "$ROOT/src-tauri/target/release/bundle" -maxdepth 2 \( -name '*.app' -o -name '*.dmg' \) | sort
+    find "$ROOT/target/release/bundle" -maxdepth 2 \( -name '*.app' -o -name '*.dmg' \) | sort
 }
 
 build_ios() {
@@ -66,10 +66,10 @@ build_android() {
     step "Building Android image"
     (cd "$ROOT" && docker compose build android)
     step "Extracting APK"
-    mkdir -p "$ROOT/dist-android"
+    mkdir -p "$ROOT/dist-out/android"
     (cd "$ROOT" && docker compose run --rm android)
     done_ "Android artifacts:"
-    find "$ROOT/dist-android" -name '*.apk' -o -name '*.aab' 2>/dev/null | sort
+    find "$ROOT/dist-out/android" -name '*.apk' -o -name '*.aab' 2>/dev/null | sort
 }
 
 build_linux() {
@@ -79,10 +79,10 @@ build_linux() {
     step "Building Linux image"
     (cd "$ROOT" && docker compose build linux)
     step "Extracting Linux artifacts"
-    mkdir -p "$ROOT/dist-linux"
+    mkdir -p "$ROOT/dist-out/linux"
     (cd "$ROOT" && docker compose run --rm linux)
     done_ "Linux artifacts:"
-    find "$ROOT/dist-linux" -name '*.deb' -o -name '*.AppImage' 2>/dev/null | sort
+    find "$ROOT/dist-out/linux" -name '*.deb' -o -name '*.AppImage' 2>/dev/null | sort
 }
 
 case "$TARGET" in

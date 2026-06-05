@@ -29,6 +29,8 @@ type Shared = Arc<taffy_core::Db>;
 type Mcp = Arc<McpState>;
 /// Shared skill store, also threaded via `Extension`.
 type Skills = Arc<taffy_core::SkillStore>;
+/// Shared store for imported stdio MCP servers, threaded via `Extension`.
+type McpImport = Arc<taffy_core::McpImportStore>;
 
 #[derive(Parser, Debug, Clone)]
 #[command(name = "taffy-web", about = "Taffy Studio — self-hosted web server")]
@@ -207,6 +209,15 @@ async fn mcp_disconnect_h(
 
 async fn mcp_tools_h(Extension(mcp): Extension<Mcp>) -> Json<Vec<McpTool>> {
     Json(taffy_core::mcp::all_tools(&mcp).await)
+}
+
+/// Import a self-authored stdio MCP server zip (raw application/zip body). The
+/// server spawns here, so unpacking + spawning run on the host.
+async fn mcp_import_zip_h(
+    Extension(store): Extension<McpImport>,
+    body: axum::body::Bytes,
+) -> Result<Json<taffy_core::McpImportResult>, (StatusCode, String)> {
+    store.import_zip(&body).map(Json).map_err(ise)
 }
 
 async fn mcp_call_h(
@@ -603,6 +614,12 @@ async fn main() {
         .map(|p| p.join("skills"))
         .unwrap_or_else(taffy_core::default_skills_root);
     let skills: Skills = Arc::new(taffy_core::SkillStore::new(skills_root));
+    // Imported stdio MCP servers live in `mcp-servers/` beside the DB.
+    let mcp_import_root = std::path::Path::new(&db_path)
+        .parent()
+        .map(|p| p.join("mcp-servers"))
+        .unwrap_or_else(taffy_core::default_mcp_root);
+    let mcp_import: McpImport = Arc::new(taffy_core::McpImportStore::new(mcp_import_root));
 
     let api = Router::new()
         .route("/api/health", get(health_handler))
@@ -617,6 +634,7 @@ async fn main() {
         .route("/api/mcp/disconnect", post(mcp_disconnect_h))
         .route("/api/mcp/tools", get(mcp_tools_h))
         .route("/api/mcp/call", post(mcp_call_h))
+        .route("/api/mcp/import-zip", post(mcp_import_zip_h))
         .route("/api/rag/kbs", get(rag_list_kbs_h).post(rag_create_kb_h))
         .route("/api/rag/kbs/{id}", post(rag_update_kb_h).delete(rag_delete_kb_h))
         .route("/api/rag/kbs/{id}/documents", get(rag_list_docs_h))
@@ -656,6 +674,7 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .layer(axum::Extension(mcp))
         .layer(axum::Extension(skills))
+        .layer(axum::Extension(mcp_import))
         .layer(axum::Extension(AppToken(config.token.clone())));
 
     let addr = format!("{}:{}", config.host, config.port);

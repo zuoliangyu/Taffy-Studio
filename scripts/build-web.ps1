@@ -4,7 +4,7 @@
   Build the standalone Taffy Studio web-server binary (no Docker).
 .DESCRIPTION
   Produces a single self-contained executable that serves the web UI in the
-  browser (the frontend is embedded via rust-embed). Output: dist-web\taffy-web.exe
+  browser (the frontend is embedded via rust-embed). Output: dist-out\web\taffy-web.exe
   Run it, your browser opens to the app. Data goes to ./taffy.db by default
   (override with --db-path), keys come from TAFFY_*_API_KEY env vars.
 .EXAMPLE
@@ -29,9 +29,9 @@ Get-Process taffy-web -ErrorAction SilentlyContinue | Stop-Process -Force
 cargo build -p taffy-web --release
 if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' }
 
-New-Item -ItemType Directory -Force dist-web | Out-Null
-Copy-Item target/release/taffy-web.exe dist-web/ -Force
-Write-Host '==> Done: dist-web\taffy-web.exe' -ForegroundColor Green
-Write-Host '    Run it:  .\dist-web\taffy-web.exe   (add --host 0.0.0.0 to expose on LAN)'
+New-Item -ItemType Directory -Force dist-out/web | Out-Null
+Copy-Item target/release/taffy-web.exe dist-out/web/ -Force
+Write-Host '==> Done: dist-out\web\taffy-web.exe' -ForegroundColor Green
+Write-Host '    Run it:  .\dist-out\web\taffy-web.exe   (add --host 0.0.0.0 to expose on LAN)'
 
-if ($Run) { & .\dist-web\taffy-web.exe }
+if ($Run) { & .\dist-out\web\taffy-web.exe }

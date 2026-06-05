@@ -4,11 +4,12 @@
 
 # Taffy Studio
 
-**基于 Tauri 2 的跨平台大模型聊天客户端。**
+**一套代码，七端交付的大模型工作站 —— 基于 Tauri 2 + React + 共享 Rust 核心。**
 
-玻璃拟态 UI · OpenAI / Anthropic / Gemini 原生协议 · 流式输出 · 系统密钥环存密钥 · Markdown + KaTeX + Mermaid · Windows / macOS / Linux / iOS / Android。
+OpenAI / Anthropic / Gemini 原生协议 · 流式输出 · MCP 工具 + 技能 · 知识库(RAG) · 系统密钥环 · 玻璃拟态 UI
+Windows · macOS · Linux · iOS · Android · 浏览器单文件 · Docker
 
-[![CI](https://github.com/your-org/taffy-studio/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/taffy-studio/actions/workflows/ci.yml)
+[![CI](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)](https://v2.tauri.app/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
@@ -19,10 +20,31 @@
 </div>
 
 > [!NOTE]
-> **状态：早期 —— 桌面端可用，移动端能构建，触屏 UI 仍在打磨。**
-> 骨架（Tauri 2 + React + SQLite + 流式 + 多服务商 + 系统密钥环）已就位；
-> Rust 业务逻辑现已抽到一个**平台无关的 `taffy-core` crate**，以便后续第二个外壳
-> （自托管 Web 服务）复用同一套核心。
+> **状态：活跃开发中 —— 桌面端可日常使用，移动端可构建，Web/服务器外壳已能聊天。**
+> 业务逻辑（LLM 分发、SQLite 数据层、MCP、技能、嵌入）集中在一个**平台无关的 `taffy-core` crate**，
+> 桌面（Tauri）与服务器（axum）两个外壳共享同一套核心，前端一套 UI 全端复用。
+
+---
+
+## ✨ 它能做什么
+
+- 🌐 **一套代码，七种交付** —— Windows / macOS / Linux / iOS / Android 五个原生端（Tauri 2），外加**浏览器单文件**自托管服务与 **Docker** 镜像。
+- 🤖 **多服务商，原生协议** —— OpenAI 兼容（OpenAI / DeepSeek / SiliconFlow / Ollama / 任意 base URL）、**Anthropic** `/v1/messages`、**Gemini** `streamGenerateContent`。按服务商自动拉取模型列表。
+- 🚀 **流式优先** —— 逐 token 推送（桌面走 `tauri::ipc::Channel`，Web 走 SSE），内置停止 / 重新生成。
+- 🧩 **MCP 工具 + 市场** —— 接入 MCP 服务器（stdio 本地 + Streamable HTTP 远程），内置 agentic 工具调用循环（OpenAI & Anthropic），并带一个可一键导入的 **MCP 市场**。
+- 🛠 **技能（Skills）** —— `SKILL.md` 形式的可复用提示/能力包，支持导入与按会话启用。
+- 📚 **知识库 / RAG** —— 本地向量库（余弦检索），按会话注入检索上下文。
+- 📎 **附件与 OCR** —— 图片（视觉模型）、PDF / 文本文档（客户端抽取文本拼进 prompt）；非视觉模型用 Tesseract.js 兜底识图。
+- 📝 **富文本渲染** —— GitHub 风味 Markdown、代码高亮（带复制）、KaTeX 公式、Mermaid 图表（懒加载）。
+- 🔐 **密钥安全** —— API 密钥存**系统密钥环**（Windows 凭据管理器 / macOS 钥匙串 / Linux libsecret）；服务器版从环境变量注入，浏览器永不接触密钥。
+- 🎨 **玻璃拟态 UI** —— HSL 令牌体系、蓝灰玻璃质感、跟随系统/浅色/深色主题、< 760px 侧栏折叠为抽屉，移动端适配安全区。
+- 🌍 **国际化** —— 英文 + 简体中文，自动识别系统语言并可手动切换。
+
+## 📸 截图
+
+> _UI 稳定后补充：`docs/screenshots/desktop-light.png`、`desktop-dark.png`、`mobile.png`。_
+
+---
 
 ## 🧭 架构
 
@@ -30,87 +52,65 @@
               React 前端（一套 UI，全外壳复用）
    ┌──────────────────────────────────────────┐
    │  Components + 状态                         │
-   │  ┌────────────┐      ┌─────────────────┐  │
-   │  │ tauriApi.ts │      │    webApi.ts    │  │
-   │  │  (invoke)   │      │  (fetch / SSE)  │  │
-   │  └──────┬──────┘      └────────┬────────┘  │
-   └─────────┼──────────────────────┼───────────┘
+   │  ┌─────────────┐      ┌─────────────────┐ │
+   │  │ tauriApi.ts │      │    webApi.ts    │ │
+   │  │  (invoke)   │      │  (fetch / SSE)  │ │
+   │  └──────┬──────┘      └────────┬────────┘ │
+   └─────────┼──────────────────────┼──────────┘
              │                      │
-        Tauri IPC            REST + SSE/WebSocket
+        Tauri IPC            REST + SSE
              │                      │
    ┌─────────┴─────────┐  ┌─────────┴──────────┐
    │     src-tauri/    │  │     taffy-web/     │
-   │  (Tauri 桌面/移动)│  │ (Axum HTTP · 规划) │
+   │  (桌面 / 移动外壳)│  │   (axum HTTP 服务) │
    └─────────┬─────────┘  └─────────┬──────────┘
              │                      │
              └──────────┬───────────┘
                         │
               ┌─────────┴──────────┐
               │     taffy-core     │  ← 共享 Rust 核心
-              │  llm（分发 / SSE） │
-              │  embeddings / DTO  │
+              │ llm · db · mcp     │
+              │ skills · embeddings│
               └─────────┬──────────┘
                         │
-         ┌──────────────┼───────────────┐
-         │              │               │
-    LLM 服务商        SQLite       MCP / 系统密钥环
- (OpenAI/Claude/    (会话·消息)   (stdio 工具 / keyring)
-   Gemini …)
+       ┌────────────┬───┴────┬──────────────┐
+   LLM 服务商     SQLite   MCP 工具     系统密钥环
+ (OpenAI/Claude/ (会话·消息  (stdio +     (keyring)
+   Gemini …)      ·KV·向量)  HTTP 远程)
 ```
 
-> 前端通过编译期变量 `__IS_TAURI__` 自动切换 API 层（Tauri `invoke` ↔ HTTP `fetch`/SSE），组件代码 100% 复用。
-> 现状：`taffy-core`（含 SQLite 数据层）、前端 `api` 抽象层、`taffy-web`(axum) 均已落地 —— 会话/消息/KV 已是两端共用的**语义端点**，桌面已移除 plugin-sql/store。搜索 / RAG / 导入导出的语义化、移动端密钥仍在进行中（见[路线图](#-路线图)）。
+> 前端通过编译期变量 `__IS_TAURI__` 自动切换传输层（Tauri `invoke` ↔ HTTP `fetch`/SSE），组件代码 100% 复用。
+> 会话 / 消息 / KV 已是两端共用的**语义端点**（桌面已移除 plugin-sql/store）。搜索、RAG、导入导出的 Web 端语义化仍在进行（见[路线图](#-路线图)）。
 
 ### 📚 配套文档
 
-- [`docs/MIGRATIONS.md`](./docs/MIGRATIONS.md) —— 数据库迁移规则（贡献者须读）
-- [`docs/UPDATER.md`](./docs/UPDATER.md) —— 自动更新的签名密钥、清单、托管与轮换
-- [`MIGRATION.md`](./MIGRATION.md) —— Cherry Studio → 本骨架的移植计划
 - [`DOCKER.md`](./DOCKER.md) —— 基于 Docker 的 Linux + Android 构建
-
----
-
-## ✨ 特性
-
-- 🌐 **一套代码，五端** —— Windows、macOS、Linux、iOS、Android（Tauri 2）。
-- 🧩 **共享 Rust 核心** —— 业务逻辑（LLM 分发、嵌入、DTO）集中在平台无关的 `taffy-core` crate；Tauri 外壳只是薄封装，Web/服务端外壳也能复用同一核心。
-- 🚀 **流式优先** —— 通过 `tauri::ipc::Channel` 逐 token 推送；内置停止 / 重新生成。
-- 🤖 **多服务商 · 原生协议** —— OpenAI 兼容（OpenAI / DeepSeek / SiliconFlow / Ollama / 任意 base URL）、**Anthropic**（`/v1/messages`）、**Gemini**（`streamGenerateContent`）。API 密钥存于**系统密钥环**（Win 凭据管理器 / macOS 钥匙串 / libsecret）。
-- 📝 **富文本渲染** —— GitHub 风味 Markdown、带复制按钮的代码高亮、KaTeX 公式（`$行内$` / `$$块级$$`）、Mermaid 图表（懒加载）。
-- 💾 **本地优先** —— 会话与消息持久化到 SQLite（`taffy-core::db`，桌面与服务器版共用）。
-- 🌐 **服务器版** —— 同一套代码可编译成单个可执行文件（或 Docker 镜像），运行后用浏览器访问，无需桌面环境。
-- 🎨 **玻璃拟态 UI** —— HSL 颜色令牌体系、蓝灰玻璃质感、径向渐变背景、自动深色模式。
-- 📱 **响应式** —— 桌面侧栏在 760px 以下折叠为抽屉；iOS/Android 适配安全区。
-- 🔐 **便于侧载** —— 不依赖应用商店；更新插件已为自托管发布预配置。
-
-## 📸 截图
-
-> _UI 稳定后在此补充截图。_
-> `docs/screenshots/desktop-light.png`、`docs/screenshots/desktop-dark.png`、`docs/screenshots/mobile.png`
+- [`MIGRATION.md`](./MIGRATION.md) —— Cherry Studio → 本骨架的移植计划
+- [`docs/`](./docs/) —— 数据库迁移规则、自动更新签名与清单等贡献者文档
 
 ---
 
 ## 🚀 快速开始
 
 ```bash
-git clone https://github.com/your-org/taffy-studio.git
-cd taffy-studio
+git clone git@github.com:zuoliangyu/Taffy-Studio.git
+cd Taffy-Studio
 pnpm install
-pnpm tauri:dev      # 首次运行会编译约 400 个 Rust crate（5–10 分钟）
+pnpm tauri:dev      # 首次会编译约 400 个 Rust crate（5–10 分钟）
 ```
 
-打开「设置」（右上角 ⚙），选一个服务商预设（OpenAI / Anthropic / Gemini / DeepSeek / SiliconFlow / Ollama），粘贴你的 API 密钥，即可开聊。
+打开右上角「设置 ⚙」，选一个服务商预设（OpenAI / Anthropic / Gemini / DeepSeek / SiliconFlow / Ollama），粘贴 API 密钥即可开聊。
 
 ## 🌐 自托管 Web 服务（服务器版）
 
-同一套代码可编译成**单个可执行文件**：运行后用浏览器访问、非桌面端 —— 适合 Windows / macOS / Linux，以及无桌面的 Linux 服务器、Docker。
+同一套代码可编译成**单个可执行文件**：运行后浏览器访问，无需桌面环境 —— 适合本机，也适合无桌面的 Linux 服务器 / Docker。
 
 ```powershell
-# Windows：产出 dist-web\taffy-web.exe，构建完直接运行（自动开浏览器）
+# Windows：产出 dist-out\web\taffy-web.exe，构建完直接运行（自动开浏览器）
 .\scripts\build-web.ps1 -Run
 ```
 ```bash
-# macOS / Linux：产出 dist-web/taffy-web
+# macOS / Linux：产出 dist-out/web/taffy-web
 RUN=1 ./scripts/build-web.sh
 ```
 
@@ -118,33 +118,35 @@ RUN=1 ./scripts/build-web.sh
 - 服务商密钥从环境变量注入（`TAFFY_OPENAI_API_KEY` / `TAFFY_ANTHROPIC_API_KEY` / `TAFFY_GEMINI_API_KEY` / 兜底 `TAFFY_API_KEY`）—— 浏览器永不接触密钥。
 - Docker 测试：`.\scripts\dev-docker.ps1`（或 `./scripts/dev-docker.sh`），见 `docker/web.Dockerfile`。
 
-> 当前 Web 端：聊天 + 会话历史已可用；全文搜索 / 知识库(RAG) / 导入导出仍在语义化中（见路线图）。
+> 当前 Web 端：聊天 + 会话历史可用；全文搜索 / RAG / 导入导出仍在语义化中。
 
 ## 🗄 数据 / 配置存储位置
 
-**桌面端与"服务器版原生二进制"默认共用同一个库**（会话、消息、设置都在一起，互通），方便在两种形态间无缝切换：
+**桌面端与"服务器版原生二进制"默认共用同一个库**（会话、消息、设置互通），便于在两种形态间无缝切换：
 
 | 内容 | 桌面端（Tauri） | 服务器版（原生二进制） | 服务器版（Docker） |
 |---|---|---|---|
-| 会话 + 消息 + 设置（kv 表） | `taffy-studio.db`（应用配置目录） | **同一个** `taffy-studio.db`（默认共用桌面端的库） | `/data/taffy.db`（挂卷，独立隔离） |
-| API 密钥 | 操作系统密钥环（服务名 `com.taffy.studio`） | 环境变量 `TAFFY_*_API_KEY`（推荐）；界面填写则存入库的 `kv` 表 | 同左 |
+| 会话 + 消息 + 设置（kv 表） | `taffy-studio.db`（应用配置目录） | **同一个** `taffy-studio.db`（默认共用桌面库） | `/data/taffy.db`（挂卷，独立隔离） |
+| API 密钥 | 系统密钥环（服务名 `com.taffy.studio`） | 环境变量 `TAFFY_*_API_KEY`（推荐）；界面填写则入库 `kv` 表 | 同左 |
 | 自动备份 | 应用配置目录下的 `backups/` | 同左 | 直接备份 / 挂载那个 DB 文件 |
 
-「应用配置目录」随系统（桌面与原生 web 二进制都用这里）：
+「应用配置目录」随系统：
 - Windows：`%APPDATA%\com.taffy.studio\`
 - macOS：`~/Library/Application Support/com.taffy.studio/`
 - Linux：`~/.config/com.taffy.studio/`
 
-- 数据库开了 **WAL 模式**，桌面端和 web 服务即使同时开着、读写同一文件也安全。
-- 想让 web 用独立的库？加 `--db-path D:\some\taffy.db`（或环境变量 `TAFFY_DB_PATH`）覆盖即可。Docker 默认就是隔离的 `/data/taffy.db`。
-- 注意：**API 密钥不共享** —— 桌面端在系统密钥环、web 在环境变量；会话/设置/模板/MCP 服务器配置则是共享的。
+- 数据库开了 **WAL 模式**，桌面端和 web 服务同时读写同一文件也安全。
+- 想让 web 用独立库？加 `--db-path D:\some\taffy.db`（或环境变量 `TAFFY_DB_PATH`）。Docker 默认就是隔离的 `/data/taffy.db`。
+- 注意：**API 密钥不共享**（桌面在密钥环、web 在环境变量）；会话/设置/模板/MCP 配置是共享的。
+
+---
 
 ## ⚙️ 前置条件
 
 | 工具 | 用途 |
 |------|------|
 | Node ≥ 18 + **pnpm** | 前端工具链 |
-| **Rust**（用 [rustup](https://rustup.rs) 装 stable） | Tauri 核心 |
+| **Rust** stable（[rustup](https://rustup.rs)） | Tauri 核心 |
 | 各系统工具链 | 见下 |
 
 按系统：
@@ -160,64 +162,50 @@ RUN=1 ./scripts/build-web.sh
 
 ## 🛠 脚本
 
-### Windows 主机
+`scripts/` 下每个入口都**同时提供 `.ps1`（Windows）与 `.sh`（macOS / Linux / WSL）两个版本**，
+都会先做预检（Node ≥ 18、pnpm、Rust、目标工具链 / Docker），缺什么直接报错并给出安装提示。
+所有平台的成品统一输出到 **`dist-out/<平台>/`**（桌面安装包除外，留在 `target/release/bundle/`）。
 
-```powershell
-# 开发（热重载，本机）
-.\scripts\dev.ps1                  # 桌面窗口               [默认]
-.\scripts\dev.ps1 android          # 模拟器 / USB 真机
+| 任务 | Windows (PowerShell) | macOS / Linux (bash) |
+|---|---|---|
+| 桌面开发（热重载） | `.\scripts\dev.ps1` | `./scripts/dev.sh` |
+| Android 开发 | `.\scripts\dev.ps1 android` | `./scripts/dev.sh android` |
+| iOS 开发 | —（Apple 限定） | `./scripts/dev-mac.sh ios` |
+| 构建 Windows 安装包 | `.\scripts\build-windows.ps1` | `./scripts/build-windows.sh`¹ |
+| 构建 Linux（Docker） | `.\scripts\build-linux.ps1` | `./scripts/build-linux.sh` |
+| 构建 Android（Docker） | `.\scripts\build-android.ps1` | `./scripts/build-android.sh` |
+| 构建 macOS / iOS | —（Apple 限定） | `./scripts/build-mac.sh` / `build-mac.sh ios` |
+| 构建 Web 单文件 | `.\scripts\build-web.ps1` | `./scripts/build-web.sh` |
+| 构建 / 推送 Docker 镜像 | `.\scripts\build-docker.ps1` | `./scripts/build-docker.sh` |
+| 统一调度器 | `.\scripts\build.ps1 <target>` | `./scripts/build.sh <target>` |
+| 生成图标 | `.\scripts\gen-icons.ps1` | `./scripts/gen-icons.sh` |
+| 本地 CI（推送前自检） | `.\scripts\ci-local.ps1` | `./scripts/ci-local.sh` |
 
-# 构建发行包
-.\scripts\build.ps1 windows        # 本机原生 —— 最快      [默认]
-.\scripts\build.ps1 linux          # Docker → dist-linux/{*.deb,*.AppImage}
-.\scripts\build.ps1 android        # Docker → dist-android/*.apk
-.\scripts\build.ps1 all            # windows + linux + android
+> ¹ Windows 安装包只能在 Windows 主机上产出；`build-windows.sh` 供 Git Bash / MSYS2 用户使用。
+> macOS / iOS 只能在真机 Mac 上构建（Apple EULA 限制），故没有对应的 `.ps1`。
 
-# 本地 CI（推送前跑全部检查）
-.\scripts\ci-local.ps1
-```
-
-### macOS 主机
-
-```bash
-./scripts/dev-mac.sh               # 桌面
-./scripts/dev-mac.sh ios
-./scripts/dev-mac.sh android
-
-./scripts/build-mac.sh             # .app + .dmg           [默认]
-./scripts/build-mac.sh ios         # .ipa（侧载）
-./scripts/build-mac.sh all         # mac + ios + android + linux
-
-./scripts/ci-local.sh
-```
-
-所有脚本都会做预检（Node ≥ 18、pnpm、Rust，以及各目标的工具链检查），缺什么会直接报错并给出具体安装提示。
+也可走 pnpm 脚本（见 `package.json`）：`pnpm dev:desktop`、`pnpm build:windows`、`pnpm build:linux`、`pnpm mac:build` 等。
 
 ---
 
 ## ✅ 推送前自检：本地 CI
 
-在本地 Docker 里跑与 GitHub Actions **完全相同**的检查 —— 推送前先抓回归：
+在本地 Docker 里跑与 GitHub Actions **完全相同**的检查：
 
 ```powershell
-.\scripts\ci-local.ps1
+.\scripts\ci-local.ps1        # macOS/Linux：./scripts/ci-local.sh
 ```
 
 对应 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：
 
 1. `pnpm install --frozen-lockfile`
-2. `pnpm exec tsc -b`       （前端类型检查）
-3. `pnpm build`              （vite 生产构建）
+2. `pnpm exec tsc -b`（前端类型检查）
+3. `pnpm build`（vite 生产构建）
 4. `cargo fmt --all -- --check`
 5. `cargo clippy --all-targets -- -D warnings`
 6. `cargo check --all-targets`
 
-首次约 5–10 分钟（构建镜像 + 缓存）。后续约 2–3 分钟（复用 node_modules + cargo registry 缓存）。
-
-```powershell
-.\scripts\ci-local.ps1 -Reset       # 若 lockfile 变动导致诡异问题，清掉缓存卷
-.\scripts\ci-local.ps1 -NoCache     # 从头重建 CI 镜像
-```
+首次约 5–10 分钟（构建镜像 + 缓存），后续约 2–3 分钟。`-Reset` 清缓存卷，`-NoCache` 从头重建镜像。
 
 ---
 
@@ -225,126 +213,96 @@ RUN=1 ./scripts/build-web.sh
 
 | 层 | 内容 |
 |-----|------|
-| 核心 | **`crates/taffy-core`** —— 平台无关的 Rust（LLM 分发、嵌入、DTO），所有外壳共享 |
-| 外壳 | [Tauri 2](https://v2.tauri.app/)（Rust 核心 + 系统 webview）；Web/服务端外壳规划中 |
-| 前端 | React 18 + TypeScript 5 + Vite 5 |
+| 共享核心 | **`crates/taffy-core`** —— 平台无关 Rust：LLM 分发、SQLite 数据层、MCP、技能、嵌入、DTO |
+| 桌面/移动外壳 | [Tauri 2](https://v2.tauri.app/)（Rust 核心 + 系统 webview），薄封装委托给 taffy-core |
+| 服务器外壳 | **`crates/taffy-web`** —— axum HTTP + rust-embed 内嵌前端 + SSE + 单用户 env token |
+| 前端 | React 18 + TypeScript 5 + Vite 5（一套 UI 全端复用） |
 | Markdown | `react-markdown` + `remark-gfm` + `react-syntax-highlighter` + `rehype-katex` + `mermaid` |
-| 数据库 | SQLite，经 `tauri-plugin-sql`（底层 sqlx） |
+| 数据库 | SQLite，经 `taffy-core::db`（**rusqlite**，桌面与服务器共用语义端点） |
 | 密钥 | `keyring` crate（桌面）+ Store 降级（移动端） |
-| HTTP / SSE | `reqwest`（rustls —— 不依赖系统 OpenSSL，对移动端友好）+ 自研 SSE 解析 |
-| 构建 | pnpm + Cargo workspace + Docker（在 Windows 上交叉构建 Linux / Android） |
-| CI | GitHub Actions：类型检查 + clippy + 打 tag 时矩阵构建桌面端 |
+| HTTP / SSE | `reqwest`（rustls，不依赖系统 OpenSSL，对移动端友好）+ 自研 SSE 解析 |
+| 构建 | pnpm + Cargo workspace + Docker（在 Windows 上交叉构建 Linux / Android；Linux 镜像用 mold 加速链接） |
+| CI | GitHub Actions：类型检查 + clippy + 打 `v*` tag 时矩阵构建全平台 |
 
 ## 📂 项目结构
 
 ```
-app/
-├─ Cargo.toml                        # Cargo WORKSPACE 根（src-tauri + crates/*）
-├─ index.html                        # Vite 入口
-├─ src/                              # React 前端（所有外壳共用一套 UI）
-│  ├─ main.tsx                       # React 启动
-│  ├─ App.tsx                        # 布局（顶栏 + 侧栏 + 主区）
-│  ├─ App.css                        # EK-OmniProbe 风格设计令牌 + 玻璃质感
-│  ├─ components/
-│  │  ├─ ChatPanel.tsx               # 消息 + 输入框 + 停止/重新生成
-│  │  ├─ MessageContent.tsx          # Markdown + KaTeX + Mermaid
-│  │  └─ SettingsPanel.tsx           # 服务商配置 + 密钥环存储的 API 密钥
-│  └─ lib/
-│     ├─ ipc.ts                      # 所有 invoke() 调用都走这里
-│     ├─ db.ts                       # SQLite（plugin-sql）
-│     ├─ store.ts                    # 持久化 KV（plugin-store）
-│     ├─ settings.ts                 # 类型化配置 + 密钥环迁移
-│     └─ llm.ts                      # ChatRequest / chatStream 契约
+.
+├─ Cargo.toml                 # Cargo WORKSPACE 根（src-tauri + crates/*）+ 构建 profile
+├─ .cargo/config.toml         # 链接器等构建配置（更快链接器按平台文档化）
+├─ index.html                 # Vite 入口
+├─ src/                       # React 前端（所有外壳共用一套 UI）
+│  ├─ App.tsx / App.css       # 布局 + 玻璃拟态设计令牌
+│  ├─ components/             # ChatPanel · MessageContent · SettingsPanel ·
+│  │                          #   McpPanel · McpMarket · SkillsPanel · KnowledgePanel ·
+│  │                          #   SearchPalette · ModelPicker · TemplatePicker · …
+│  ├─ services/               # api.ts + tauriApi.ts + webApi.ts（传输抽象层）
+│  ├─ lib/                    # ipc · llm · mcp · mcpMarket · skills · rag · ocr ·
+│  │                          #   attachments · doctext · settings · theme · i18n 桥接 …
+│  └─ i18n/                   # 英文 + 简体中文
 ├─ crates/
-│  ├─ taffy-core/                    # ★ 平台无关核心 —— 不含 tauri:: / axum::
-│  │  └─ src/
-│  │     ├─ lib.rs                   # 重新导出
-│  │     └─ llm.rs                   # 服务商分发、SSE 解析、流式、list_models / chat_complete / embed_texts
-│  └─ taffy-web/                     # ★ Web/服务端外壳（axum + rust-embed）
-│     └─ src/
-│        ├─ main.rs                  # 路由 + 单用户 env token + SSE + SPA 托管
-│        └─ static_files.rs          # 内嵌 dist/
-├─ src-tauri/                        # Tauri 桌面/移动外壳（薄；委托给 taffy-core）
-│  ├─ src/
-│  │  ├─ main.rs                     # 桌面入口
-│  │  ├─ lib.rs                      # Tauri 命令 + 流式/agentic 循环 + 存储
-│  │  └─ mcp.rs                      # MCP stdio 客户端
-│  ├─ Cargo.toml
+│  ├─ taffy-core/             # ★ 平台无关核心（无 tauri:: / axum::）
+│  │  └─ src/                 #   lib · llm · db · mcp · mcp_import · skills
+│  └─ taffy-web/              # ★ axum 服务器外壳
+│     └─ src/                 #   main（路由 + env token + SSE + SPA）· static_files（内嵌 dist/）
+├─ src-tauri/                 # Tauri 桌面/移动外壳（薄；委托给 taffy-core）
+│  ├─ src/                    #   main（桌面入口）· lib（Tauri 命令 + 流式/agentic 循环 + 存储）
 │  ├─ tauri.conf.json
-│  └─ capabilities/                  # 插件权限授予
-├─ docker/                           # 跨平台「构建」镜像（不是运行时服务器）
-│  ├─ ci.Dockerfile                  # 本地 CI 校验
-│  ├─ linux.Dockerfile               # Linux deb + AppImage
-│  └─ android.Dockerfile             # Android APK
-├─ scripts/                          # Win + Mac 的 dev / build / ci-local
-├─ .github/workflows/                # ci.yml + release.yml
-├─ DOCKER.md                         # Docker 构建说明
-├─ MIGRATION.md                      # Cherry Studio 移植计划
-├─ README.md                         # 你在这里（简体中文，默认）
-└─ README.en.md                      # English
+│  ├─ icons/ · capabilities/  # 图标 · 插件权限授予
+├─ docker/                    # 跨平台「构建」镜像（非运行时服务）
+│  ├─ ci · linux · android · web .Dockerfile
+├─ scripts/                   # 每个入口都有 .ps1 + .sh；共享 lib/common.{ps1,sh}
+├─ dist-out/                  # 所有平台成品（已 gitignore）
+├─ .github/workflows/         # ci.yml + release.yml
+└─ README.md · README.en.md · DOCKER.md · MIGRATION.md
 ```
 
 ---
 
 ## 🗺 路线图
 
-详见 [`MIGRATION.md`](./MIGRATION.md)。概览：
-
 - [x] Tauri 2 骨架（Windows/Mac/Linux/iOS/Android）
-- [x] SQLite 持久化 + 多会话
-- [x] OpenAI 兼容流式 + Anthropic + Gemini 原生协议
-- [x] 停止 / 重新生成
+- [x] SQLite 持久化 + 多会话；数据层下沉到 `taffy-core::db`(rusqlite)
+- [x] OpenAI 兼容流式 + Anthropic + Gemini 原生协议；按服务商拉取模型列表
+- [x] 停止 / 重新生成；会话标题自动摘要
 - [x] Markdown + 代码高亮 + KaTeX + Mermaid
-- [x] 桌面端 API 密钥存系统密钥环
-- [x] 响应式侧栏（< 760px 变抽屉）
-- [x] EK-OmniProbe 风格玻璃拟态 UI
-- [x] 本地 + GitHub Actions CI
-- [x] 按服务商自动拉取模型列表
-- [x] 会话标题自动摘要
-- [x] 分包（按 vendor 切块；pdf.js / tesseract 懒加载）
-- [x] **国际化** —— 英文 + 简体中文，自动识别系统语言 + 可手动切换
-- [x] **主题控制** —— 跟随系统 / 浅色 / 深色（覆盖系统媒体查询）
-- [x] **文件附件** —— 图片（视觉）+ PDF / 文本文档（客户端抽取文本拼进 prompt）
-- [x] **OCR** —— 非视觉模型下用 Tesseract.js 兜底识图
-- [x] **MCP 客户端** —— stdio 服务器、工具注册表、agentic 工具调用循环（OpenAI + Anthropic）
-- [x] **知识库 / RAG** —— 本地向量库（暴力余弦）、按会话注入检索
-- [x] **共享 Rust 核心** —— 把平台无关逻辑（LLM / 嵌入 / DTO）拆出到 `crates/taffy-core`
-- [x] **前端后端抽象层** —— `services/api.ts` + `tauriApi.ts` + `webApi.ts`，UI 与传输彻底解耦
-- [x] **Web 外壳骨架** —— `taffy-web`(axum + rust-embed) + 单用户 env token + LLM/embed 端点(SSE)
-- [x] **数据层下沉到核心** —— SQLite 迁移 / 会话 / 消息 / KV 移入 `taffy-core::db`(rusqlite)，桌面与 Web 共用语义端点；桌面已移除 plugin-sql/store
-- [x] **Web Docker 镜像** —— `docker/web.Dockerfile` + `scripts/dev-docker.{ps1,sh}`（本地一键起 web 服务测试）
-- [ ] **Web 端到端完整化** —— 搜索 / RAG / 导入导出的语义端点（当前桌面走低层 SQL 通路、Web 暂不可用）
-- [ ] 流式 Markdown 稳定性（表格/代码半渲染时不闪烁）
-- [ ] agentic 工具调用循环内的逐 token 流式（目前是按轮）
+- [x] 桌面 API 密钥存系统密钥环
+- [x] 响应式侧栏 + 玻璃拟态 UI + 主题（系统/浅/深）+ 国际化（英/中）
+- [x] 文件附件（图片 + PDF/文本）+ Tesseract.js OCR 兜底
+- [x] **MCP 客户端** —— stdio + Streamable HTTP 远程、工具注册表、agentic 工具调用循环
+- [x] **MCP 市场** —— 可一键导入的服务器目录
+- [x] **技能（Skills）** —— `SKILL.md` 存储/导入 + 按会话启用 + `use_skill` 内置工具
+- [x] **知识库 / RAG** —— 本地向量库（余弦）、按会话注入
+- [x] **共享 Rust 核心** —— LLM / 数据层 / MCP / 技能 / 嵌入拆入 `crates/taffy-core`
+- [x] **前后端抽象层** —— `services/api.ts` + `tauriApi.ts` + `webApi.ts`，UI 与传输解耦
+- [x] **Web 外壳** —— `taffy-web`(axum + rust-embed) + 单用户 env token + LLM/embed 端点(SSE)
+- [x] **Web Docker 镜像** + 本地一键起服务测试
+- [ ] **Web 端到端完整化** —— 搜索 / RAG / 导入导出的语义端点
+- [ ] 流式 Markdown 稳定性（表格/代码半渲染不闪烁）
+- [ ] agentic 工具调用循环内的逐 token 流式（目前按轮）
 - [ ] 移动端密钥存储用 Stronghold / Android Keystore / iOS Keychain
 
 ## 🤝 贡献
 
-欢迎 PR。推送前：
+欢迎 PR。推送前跑 `ci-local`（见上）。约定：
 
-```powershell
-.\scripts\ci-local.ps1    # Mac/Linux 用 .\scripts\ci-local.sh
-```
+- TypeScript 严格模式（`tsc -b` 必须通过）；Rust 走 `cargo fmt` + `cargo clippy -- -D warnings`。
+- 所有 JS → Rust 调用走 `src/lib/ipc.ts`（组件里不要内联 `invoke()`）。
+- 业务逻辑放进 `crates/taffy-core`（那里不出现 `tauri::` / `axum::` 类型），以便外壳复用。
+- 提交信息：简短祈使句；鼓励 `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` 前缀。
 
-约定：
-- TypeScript 严格模式（`tsc -b` 必须通过）。
-- Rust：`cargo fmt`、`cargo clippy -- -D warnings`。
-- 提交信息：简短祈使句主题；鼓励但不强制 `feat:` / `fix:` / `docs:` / `chore:` / `refactor:` 前缀。
-- 所有 JS → Rust 调用都走 `src/lib/ipc.ts`（组件里不要内联 `invoke()`）。
-- 业务逻辑放进 `crates/taffy-core`（那里不出现 `tauri::` 类型），以便将来外壳复用。
-
-Issue 与讨论：在 GitHub 开。较大的架构改动请先开个 discussion。
+较大的架构改动请先在 GitHub 开个 discussion。
 
 ## 🙏 致谢
 
-Taffy Studio 的设计与架构受以下项目启发：
+设计与架构受以下项目启发：
 
 - **[Cherry Studio](https://github.com/CherryHQ/cherry-studio)** —— AI 工作站功能清单（AGPL-3.0）。
 - **[Kelivo](https://github.com/Chevey339/kelivo)** —— Flutter 大模型客户端，移动端 UX 参考。
-- **[EK-OmniProbe](https://github.com/EmbeddedKitOrg/EK-OmniProbe)** —— 移植到聊天界面的玻璃拟态设计语言。
-- **[Tauri](https://v2.tauri.app/)** —— 让五端部署变得现实的外壳。
+- **[EK-OmniProbe](https://github.com/EmbeddedKitOrg/EK-OmniProbe)** —— 玻璃拟态设计语言。
+- **[Tauri](https://v2.tauri.app/)** —— 让多端部署成为现实的外壳。
 
-> 本仓库源码均为原创；上述项目仅作致谢 —— 它们公开的思路、文件结构或视觉语言为这里的取舍提供了参考。
+> 本仓库源码均为原创；上述项目仅作致谢。
 
 ## 📄 许可
 

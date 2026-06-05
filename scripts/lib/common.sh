@@ -51,6 +51,13 @@ ensure_rust() {
     ok "$(rustc --version)"
 }
 
+ensure_docker() {
+    command -v docker >/dev/null || die "Docker CLI not found. Install Docker Desktop / Engine."
+    # `docker info` exits non-zero if the daemon is not running.
+    docker info >/dev/null 2>&1 || die "Docker daemon not responding. Start Docker and retry."
+    ok "docker daemon OK"
+}
+
 ensure_xcode() {
     command -v xcodebuild >/dev/null || die "Xcode command line tools not found. Run: xcode-select --install"
     # xcodebuild -version exits non-zero if no full Xcode is installed (only CLT).

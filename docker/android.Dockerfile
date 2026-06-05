@@ -2,7 +2,7 @@
 #
 # Usage:
 #   docker build -f docker/android.Dockerfile -t taffy-studio-android .
-#   docker run --rm -v ${PWD}/dist-android:/out taffy-studio-android
+#   docker run --rm -v ${PWD}/dist-out/android:/out taffy-studio-android
 #
 # Output: /out/*.apk, /out/*.aab.
 #
@@ -12,7 +12,7 @@
 FROM ubuntu:22.04 AS build
 
 ARG NODE_MAJOR=20
-ARG RUST_VERSION=1.82.0
+ARG RUST_VERSION=1.95.0
 ARG PNPM_VERSION=9
 ARG ANDROID_API=34
 ARG ANDROID_BUILD_TOOLS=34.0.0
