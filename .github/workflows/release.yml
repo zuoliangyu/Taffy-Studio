@@ -90,6 +90,19 @@ jobs:
             -o -name '*.msi' -o -name '*.exe' -o -name '*.nsis.zip' \
             -o -name '*.sig' \
           \) -exec cp -v {} staged/ \;
+          # Windows portable: also ship the raw self-contained exe (no installer;
+          # uses system WebView2). It lives one level up from bundle/.
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            rel="target/${{ matrix.rust-target }}/release"
+            ver=$(node -p "require('./src-tauri/tauri.conf.json').version")
+            prod=$(node -p "require('./src-tauri/tauri.conf.json').productName")
+            for cand in "$prod.exe" "taffy-studio.exe"; do
+              if [ -f "$rel/$cand" ]; then
+                cp -v "$rel/$cand" "staged/$(echo "$prod" | tr ' ' '-')_${ver}_x64-portable.exe"
+                break
+              fi
+            done
+          fi
           ls -lah staged
 
       - uses: actions/upload-artifact@v7
