@@ -1,43 +1,87 @@
 #!/usr/bin/env bash
 # Unified release builder dispatcher (bash counterpart of build.ps1).
+# Interactive when run with no target.
 #
-# Usage:
-#   ./scripts/build.sh [target]
+#   ./scripts/build.sh                 # interactive menu (target, then mode)
+#   ./scripts/build.sh web             # release web build
+#   ./scripts/build.sh web --debug     # debug web build
+#   ./scripts/build.sh all
 #
-#   linux    -> Docker (.deb + AppImage)                                [default]
-#   android  -> Docker (.apk + .aab)
+# Targets:
+#   linux    -> Docker (.deb + .AppImage)        [release]
+#   android  -> Docker (.apk, debug-signed)       [debug]
 #   web      -> single self-contained taffy-web binary
-#   windows  -> native NSIS + MSI   (only on a Windows host)
+#   windows  -> native NSIS + MSI + portable exe  (Windows host only)
 #   all      -> linux + android + web
-#   help     -> show this help
 #
-# Note on the matrix: this dispatcher covers the targets buildable from a
-# Linux/macOS host. macOS + iOS are Apple-only — use scripts/build-mac.sh on a
-# real Mac. Windows installers need a Windows host — use build-windows.* there.
-
-set -euo pipefail
+# --debug applies to the native targets (web, windows): an unoptimised, larger,
+# faster-to-compile build. Docker linux is always release; Android is debug.
+set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
-TARGET="${1:-linux}"
+TARGET=""
+DEBUG=0
+for a in "$@"; do
+    case "$a" in
+        --debug)        DEBUG=1 ;;
+        -h|--help|help) head -n 18 "$0" | tail -n 17; exit 0 ;;
+        *) if [ -z "$TARGET" ]; then TARGET="$a"; else die "Unexpected argument: $a"; fi ;;
+    esac
+done
 
-run_sub() {
-    local name="$1" script="$2"; shift 2
-    step "[$name] $script"
-    bash "$script" "$@"
+# key | description | debuggable(1/0)
+TARGETS=(
+    "linux|Docker -> .deb + .AppImage  (release)|0"
+    "android|Docker -> .apk  (debug-signed)|0"
+    "web|single-file taffy-web server binary|1"
+    "windows|native NSIS + MSI + portable exe (Windows host)|1"
+    "all|linux + android + web|1"
+)
+
+# Interactive menu when no target was given.
+if [ -z "$TARGET" ]; then
+    step "Taffy Studio - build"
+    i=0
+    declare -a KEYS DBG
+    for e in "${TARGETS[@]}"; do
+        IFS='|' read -r k d dbg <<<"$e"
+        i=$((i + 1)); KEYS[$i]="$k"; DBG[$i]="$dbg"
+        printf '  [%d] %-9s %s\n' "$i" "$k" "$d"
+    done
+    echo
+    printf 'Pick a target [1-%d] (blank to cancel): ' "$i"
+    read -r pick || true
+    [ -z "${pick// /}" ] && { warn "Cancelled."; exit 0; }
+    { [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -le "$i" ]; } || die "Invalid choice: $pick"
+    TARGET="${KEYS[$pick]}"
+    if [ "${DBG[$pick]}" = 1 ]; then
+        echo
+        echo "  [1] release   optimised, smaller  (default)"
+        echo "  [2] debug     unoptimised, larger, faster to compile"
+        printf 'Build mode [1-2] (blank = release): '
+        read -r m || true
+        [ "${m// /}" = 2 ] && DEBUG=1
+    fi
+fi
+
+run_sub() { # name script supports_debug(1/0)
+    local name="$1" script="$2" supdbg="$3" dbg=""
+    [ "$supdbg" = 1 ] && [ "$DEBUG" = 1 ] && dbg="--debug"
+    step "[$name] $(basename "$script")${dbg:+ (debug)}"
+    bash "$SCRIPT_DIR/$script" $dbg
 }
 
 case "$TARGET" in
-    help|-h|--help) head -n 16 "$0" | tail -n 15; exit 0 ;;
-    linux)   run_sub linux   "$SCRIPT_DIR/build-linux.sh" ;;
-    android) run_sub android "$SCRIPT_DIR/build-android.sh" ;;
-    web)     run_sub web     "$SCRIPT_DIR/build-web.sh" ;;
-    windows) run_sub windows "$SCRIPT_DIR/build-windows.sh" ;;
+    linux)   run_sub linux   build-linux.sh   0 ;;
+    android) run_sub android build-android.sh 0 ;;
+    web)     run_sub web     build-web.sh     1 ;;
+    windows) run_sub windows build-windows.sh 1 ;;
     all)
-        run_sub linux   "$SCRIPT_DIR/build-linux.sh"
-        run_sub android "$SCRIPT_DIR/build-android.sh"
-        run_sub web     "$SCRIPT_DIR/build-web.sh"
+        run_sub linux   build-linux.sh   0
+        run_sub android build-android.sh 0
+        run_sub web     build-web.sh     1
         ;;
     *) die "Unknown target: $TARGET (try: linux | android | web | windows | all | help)" ;;
 esac

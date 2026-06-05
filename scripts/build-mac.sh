@@ -18,18 +18,30 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
-TARGET="${1:-mac}"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+TARGET=""
+DEBUG=0
+for a in "$@"; do
+    case "$a" in
+        --debug) DEBUG=1 ;;
+        *) if [ -z "$TARGET" ]; then TARGET="$a"; else die "Unexpected argument: $a"; fi ;;
+    esac
+done
+TARGET="${TARGET:-mac}"
+profile=release; dbg=""
+[ "$DEBUG" = 1 ] && { profile=debug; dbg="--debug"; }   # mac/ios native builds only
 
 usage() {
     cat <<EOF
-Usage: $0 [mac|ios|android|linux|all|help]
+Usage: $0 [mac|ios|android|linux|all|help] [--debug]
 
   mac      tauri build (.app, .dmg)                                   [default]
   ios      tauri ios build (.ipa for sideload — needs signing team)
   android  Docker -> APK
   linux    Docker -> .deb + AppImage
   all      mac + ios + android + linux
+  --debug  unoptimised debug build (mac/ios native targets; larger, faster)
 EOF
 }
 
@@ -37,10 +49,10 @@ build_mac() {
     step "Preflight (mac build)"
     ensure_node; ensure_pnpm; ensure_rust
     ensure_app_deps "$ROOT"
-    step "Building macOS bundle"
-    (cd "$ROOT" && pnpm tauri build)
+    step "Building macOS bundle ($profile)"
+    (cd "$ROOT" && pnpm tauri build $dbg)
     done_ "macOS artifacts:"
-    find "$ROOT/target/release/bundle" -maxdepth 2 \( -name '*.app' -o -name '*.dmg' \) | sort
+    find "$ROOT/target/$profile/bundle" -maxdepth 2 \( -name '*.app' -o -name '*.dmg' \) | sort
 }
 
 build_ios() {
@@ -54,8 +66,8 @@ build_ios() {
         (cd "$ROOT" && pnpm tauri ios init)
         warn "Configure Signing Team in Xcode before release builds."
     fi
-    step "Building iOS .ipa"
-    (cd "$ROOT" && pnpm tauri ios build)
+    step "Building iOS .ipa ($profile)"
+    (cd "$ROOT" && pnpm tauri ios build $dbg)
     done_ "iOS artifacts under src-tauri/gen/apple/build/."
 }
 

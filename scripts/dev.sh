@@ -1,28 +1,48 @@
 #!/usr/bin/env bash
-# Unified dev launcher (bash counterpart of dev.ps1).
+# Unified dev launcher (bash counterpart of dev.ps1). Interactive when run with
+# no target.
 #
-# Usage:
-#   ./scripts/dev.sh [target]
+#   ./scripts/dev.sh             # interactive menu
+#   ./scripts/dev.sh desktop     # tauri dev (native window, hot-reload)
+#   ./scripts/dev.sh android     # tauri android dev (emulator or USB device)
+#   ./scripts/dev.sh ios         # tauri ios dev (macOS + Xcode only)
 #
-#   desktop  -> tauri dev (native window, hot-reload)                   [default]
-#   android  -> tauri android dev (emulator or USB device)
-#   ios      -> tauri ios dev   (macOS + Xcode only)
-#   help     -> show this help
-#
-# Dev always runs on the local machine (Docker has no GUI and is slower to
-# iterate). On macOS this also drives ios/android; on Linux, desktop + android.
-
-set -euo pipefail
+# Dev always runs on the local machine (Docker has no GUI) and is always a debug
+# build. On macOS this drives ios/android too; on Linux, desktop + android.
+set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
-
-TARGET="${1:-desktop}"
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-case "$TARGET" in
-    help|-h|--help) head -n 12 "$0" | tail -n 11; exit 0 ;;
+case "${1:-}" in
+    -h|--help|help) head -n 14 "$0" | tail -n 13; exit 0 ;;
 esac
+TARGET="${1:-}"
+
+# key | description
+MENU=(
+    "desktop|tauri dev - native window, hot-reload"
+    "android|tauri android dev - emulator or USB device"
+    "ios|tauri ios dev - macOS + Xcode only"
+)
+
+if [ -z "$TARGET" ]; then
+    step "Taffy Studio - dev"
+    i=0
+    declare -a KEYS
+    for e in "${MENU[@]}"; do
+        IFS='|' read -r k d <<<"$e"
+        i=$((i + 1)); KEYS[$i]="$k"
+        printf '  [%d] %-9s %s\n' "$i" "$k" "$d"
+    done
+    echo
+    printf 'Pick a target [1-%d] (blank to cancel): ' "$i"
+    read -r pick || true
+    [ -z "${pick// /}" ] && { warn "Cancelled."; exit 0; }
+    { [[ "$pick" =~ ^[0-9]+$ ]] && [ "$pick" -ge 1 ] && [ "$pick" -le "$i" ]; } || die "Invalid choice: $pick"
+    TARGET="${KEYS[$pick]}"
+fi
 
 step "Preflight"
 ensure_node; ensure_pnpm; ensure_rust

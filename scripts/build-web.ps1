@@ -9,28 +9,32 @@
   (override with --db-path), keys come from TAFFY_*_API_KEY env vars.
 .EXAMPLE
   .\scripts\build-web.ps1
-  .\scripts\build-web.ps1 -Run        # build, then launch it
+  .\scripts\build-web.ps1 -Run         # build, then launch it
+  .\scripts\build-web.ps1 -DebugBuild  # unoptimised debug build (larger, faster compile)
 #>
 [CmdletBinding()]
-param([switch]$Run)
+param([switch]$Run, [switch]$DebugBuild)
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+$profileDir = if ($DebugBuild) { 'debug' } else { 'release' }
 
 Write-Host '==> Installing deps + building frontend (web bundle)...' -ForegroundColor Cyan
 pnpm install --frozen-lockfile
 pnpm build                       # no TAURI_ENV_PLATFORM => web bundle (webApi)
 if ($LASTEXITCODE -ne 0) { throw 'frontend build failed' }
 
-Write-Host '==> Building taffy-web (release)...' -ForegroundColor Cyan
-# A running instance locks target\release\taffy-web.exe (Windows won't let
+Write-Host "==> Building taffy-web ($profileDir)..." -ForegroundColor Cyan
+# A running instance locks target\<profile>\taffy-web.exe (Windows won't let
 # cargo overwrite it). Stop any first.
 Get-Process taffy-web -ErrorAction SilentlyContinue | Stop-Process -Force
-cargo build -p taffy-web --release
+$cargoArgs = @('build', '-p', 'taffy-web')
+if (-not $DebugBuild) { $cargoArgs += '--release' }
+cargo @cargoArgs
 if ($LASTEXITCODE -ne 0) { throw 'cargo build failed' }
 
 New-Item -ItemType Directory -Force dist-out/web | Out-Null
-Copy-Item target/release/taffy-web.exe dist-out/web/ -Force
+Copy-Item "target/$profileDir/taffy-web.exe" dist-out/web/ -Force
 Write-Host '==> Done: dist-out\web\taffy-web.exe' -ForegroundColor Green
 Write-Host '    Run it:  .\dist-out\web\taffy-web.exe   (add --host 0.0.0.0 to expose on LAN)'
 

@@ -1,19 +1,19 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Unified dev launcher for Taffy Studio (Windows host).
+  Unified dev launcher for Taffy Studio (Windows host). Interactive when run
+  with no target.
 
 .DESCRIPTION
-  Starts a dev session with hot-reload for the chosen target.
-  Dev always runs on the local machine — Docker is not suitable for dev
-  (no GUI, slower iteration). For desktop dev cross-compiled to Linux,
-  use WSL2 with a real X server.
+  Starts a hot-reload dev session for the chosen target (dev is always a debug
+  build). Run with NO argument for an interactive menu; pass a target to skip it.
+
+    desktop  -> tauri dev (native window, hot-reload)        [default]
+    android  -> tauri android dev (emulator or USB device)
+    ios      -> errors out: iOS dev requires macOS + Xcode
 
 .PARAMETER Target
-  desktop  -> tauri dev (Windows native window, hot-reload).        [default]
-  android  -> tauri android dev (emulator or USB device).
-  ios      -> errors out: iOS dev requires macOS + Xcode.
-  help     -> show this help.
+  desktop | android | ios | help. Omit for the interactive menu.
 
 .EXAMPLE
   .\scripts\dev.ps1
@@ -21,16 +21,32 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Position=0)]
-    [ValidateSet('desktop', 'android', 'ios', 'help')]
-    [string]$Target = 'desktop'
+    [Parameter(Position = 0)]
+    [string]$Target
 )
 
 . "$PSScriptRoot\lib\common.ps1"
 
-if ($Target -eq 'help') {
+if ($Target -in @('help', '-h', '--help')) {
     Get-Help $PSCommandPath -Detailed
     exit 0
+}
+
+# Targets offered in the menu (ios is excluded - it can't run on a Windows host).
+$menu = @(
+    [ordered]@{ Key = 'desktop'; Desc = 'tauri dev - native window, hot-reload' }
+    [ordered]@{ Key = 'android'; Desc = 'tauri android dev - emulator or USB device' }
+)
+
+if (-not $Target) {
+    Write-Step "Taffy Studio - dev"
+    $n = 0
+    foreach ($t in $menu) { $n++; Write-Host ("  [{0}] {1,-9} {2}" -f $n, $t.Key, $t.Desc) }
+    Write-Host ""
+    $pick = Read-Host "Pick a target [1-$($menu.Count)] (blank to cancel)"
+    if ([string]::IsNullOrWhiteSpace($pick)) { Write-Warn "Cancelled."; exit 0 }
+    if ($pick -notmatch '^\d+$' -or [int]$pick -lt 1 -or [int]$pick -gt $menu.Count) { throw "Invalid choice: $pick" }
+    $Target = $menu[[int]$pick - 1].Key
 }
 
 $root = Get-AppRoot
@@ -52,7 +68,6 @@ switch ($Target) {
         Ensure-AndroidEnv
         Ensure-AndroidRustTargets
 
-        # `tauri android dev` requires the gen/android project to exist.
         $genAndroid = Join-Path $root 'src-tauri\gen\android'
         if (-not (Test-Path $genAndroid)) {
             Write-Step "Initializing Android project (one-time)"
@@ -72,6 +87,8 @@ On a Mac:
   ./scripts/dev-mac.sh ios
 "@
     }
+
+    default { throw "Unknown target '$Target'. Try: desktop | android | ios | help" }
 }
 
 Write-Done "dev session ended."

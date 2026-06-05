@@ -10,10 +10,14 @@
 .PARAMETER Targets
   Bundle targets passed to tauri build, e.g. nsis, msi, app.
   Default: nsis,msi.
+
+.PARAMETER DebugBuild
+  Build an unoptimised debug build (larger, faster to compile). Default: release.
 #>
 [CmdletBinding()]
 param(
-    [string]$Targets = 'nsis,msi'
+    [string]$Targets = 'nsis,msi',
+    [switch]$DebugBuild
 )
 
 . "$PSScriptRoot\lib\common.ps1"
@@ -30,11 +34,15 @@ Ensure-AppDeps $root
 # a clear message if they're missing. Surfacing them here would require Registry
 # probing that's brittle across Win editions.
 
-Write-Step "Building Windows installer ($Targets)"
-Write-Ok "First run compiles all Rust crates from scratch (~10 min); later builds reuse ./target."
-Invoke-Pnpm -Root $root -Args @('tauri', 'build', '--bundles', $Targets)
+$profileDir = if ($DebugBuild) { 'debug' } else { 'release' }
+$tauriArgs = @('tauri', 'build', '--bundles', $Targets)
+if ($DebugBuild) { $tauriArgs += '--debug' }
 
-$bundleDir = Join-Path $root 'target\release\bundle'
+Write-Step "Building Windows installer ($Targets, $profileDir)"
+Write-Ok "First run compiles all Rust crates from scratch (~10 min); later builds reuse ./target."
+Invoke-Pnpm -Root $root -Args $tauriArgs
+
+$bundleDir = Join-Path $root "target\$profileDir\bundle"
 Write-Done "Installers:"
 if (Test-Path $bundleDir) {
     Get-ChildItem -Recurse $bundleDir -Include *.exe, *.msi |
@@ -48,14 +56,15 @@ if (Test-Path $bundleDir) {
 # The raw app exe is self-contained (frontend assets are embedded; it uses the
 # system WebView2), so it runs without installation. Copy it out to dist-out/.
 $conf = Get-Content (Join-Path $root 'src-tauri\tauri.conf.json') -Raw | ConvertFrom-Json
-$relDir = Join-Path $root 'target\release'
+$relDir = Join-Path $root "target\$profileDir"
 $portableSrc = @("$($conf.productName).exe", 'taffy-studio.exe') |
     ForEach-Object { Join-Path $relDir $_ } |
     Where-Object { Test-Path $_ } | Select-Object -First 1
 if ($portableSrc) {
     $outDir = Join-Path $root 'dist-out\windows'
     New-Item -ItemType Directory -Force -Path $outDir | Out-Null
-    $name = ('{0}_{1}_x64-portable.exe' -f ($conf.productName -replace '\s', '-'), $conf.version)
+    $suffix = if ($DebugBuild) { '-debug' } else { '' }
+    $name = ('{0}_{1}{2}_x64-portable.exe' -f ($conf.productName -replace '\s', '-'), $conf.version, $suffix)
     $portable = Join-Path $outDir $name
     Copy-Item $portableSrc $portable -Force
     Write-Done "Portable (no install needed):"

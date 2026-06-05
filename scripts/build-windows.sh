@@ -18,10 +18,18 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
 source "$SCRIPT_DIR/lib/common.sh"
 
-case "${1:-}" in
-    -h|--help) head -n 9 "$0" | tail -n 8; exit 0 ;;
-esac
-TARGETS="${1:-nsis,msi}"
+DEBUG=0
+TARGETS=""
+for a in "$@"; do
+    case "$a" in
+        --debug)   DEBUG=1 ;;
+        -h|--help) head -n 9 "$0" | tail -n 8; exit 0 ;;
+        *) if [ -z "$TARGETS" ]; then TARGETS="$a"; else die "Unexpected argument: $a"; fi ;;
+    esac
+done
+TARGETS="${TARGETS:-nsis,msi}"
+profile=release
+[ "$DEBUG" = 1 ] && profile=debug
 
 ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
@@ -34,12 +42,13 @@ step "Preflight (Windows build)"
 ensure_node; ensure_pnpm; ensure_rust
 ensure_app_deps "$ROOT"
 
-step "Building Windows installer ($TARGETS)"
+step "Building Windows installer ($TARGETS, $profile)"
 ok "First run compiles all Rust crates from scratch (~10 min); later builds reuse ./target."
-(cd "$ROOT" && pnpm tauri build --bundles "$TARGETS")
+dbg=""; [ "$DEBUG" = 1 ] && dbg="--debug"
+(cd "$ROOT" && pnpm tauri build --bundles "$TARGETS" $dbg)
 
 done_ "Installers:"
-find "$ROOT/target/release/bundle" \( -name '*.exe' -o -name '*.msi' \) 2>/dev/null | sort
+find "$ROOT/target/$profile/bundle" \( -name '*.exe' -o -name '*.msi' \) 2>/dev/null | sort
 
 # --- Portable build -------------------------------------------------------
 # The raw app exe is self-contained (embedded frontend; uses system WebView2),
@@ -48,11 +57,12 @@ product=$(node -p "require('$ROOT/src-tauri/tauri.conf.json').productName")
 version=$(node -p "require('$ROOT/src-tauri/tauri.conf.json').version")
 portable_src=""
 for cand in "$product.exe" "taffy-studio.exe"; do
-    if [ -f "$ROOT/target/release/$cand" ]; then portable_src="$ROOT/target/release/$cand"; break; fi
+    if [ -f "$ROOT/target/$profile/$cand" ]; then portable_src="$ROOT/target/$profile/$cand"; break; fi
 done
 if [ -n "$portable_src" ]; then
     mkdir -p "$ROOT/dist-out/windows"
-    portable="$ROOT/dist-out/windows/$(echo "$product" | tr ' ' '-')_${version}_x64-portable.exe"
+    suffix=""; [ "$DEBUG" = 1 ] && suffix="-debug"
+    portable="$ROOT/dist-out/windows/$(echo "$product" | tr ' ' '-')_${version}${suffix}_x64-portable.exe"
     cp "$portable_src" "$portable"
     done_ "Portable (no install needed): $portable"
     ok "Note: needs the WebView2 runtime (built into Win11; Win10 may need it installed once)."
