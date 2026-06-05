@@ -52,7 +52,7 @@ jobs:
 
       # No `version:` — reads packageManager (pnpm@10.20.0) from package.json.
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
@@ -123,7 +123,7 @@ jobs:
 
       # taffy-web has no Tauri/system deps — just node + rust.
       - uses: pnpm/action-setup@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v6
         with:
           node-version: 20
           cache: pnpm
