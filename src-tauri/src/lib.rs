@@ -71,6 +71,7 @@ fn ping(payload: String) -> String {
 // and the JS side falls back to its existing Store-based path. Wire native
 // Keychain / Keystore later via tauri plugins.
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const KEYRING_SERVICE: &str = "com.taffy.studio";
 
 #[tauri::command]
@@ -518,6 +519,7 @@ fn open_config_dir(app: AppHandle) -> Result<(), String> {
         let _ = path;
         return Err("Open folder is not supported on mobile".into());
     }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     Ok(())
 }
 
@@ -845,6 +847,7 @@ fn import_conversations(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg_attr(mobile, allow(unused_mut))]
     let mut builder = tauri::Builder::default()
         .plugin(
             tauri_plugin_log::Builder::default()
