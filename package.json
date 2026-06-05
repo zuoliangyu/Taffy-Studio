@@ -1,7 +1,7 @@
 {
   "name": "taffy-studio",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.0.1",
   "type": "module",
   "description": "Taffy Studio — cross-platform AI workstation (Tauri 2 + React). Chat, knowledge, MCP, agents — five platforms.",
   "scripts": {

@@ -10,6 +10,7 @@ OpenAI / Anthropic / Gemini 原生协议 · 流式输出 · MCP 工具 + 技能 
 Windows · macOS · Linux · iOS · Android · 浏览器单文件 · Docker
 
 [![CI](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/zuoliangyu/Taffy-Studio?include_prereleases&sort=semver)](https://github.com/zuoliangyu/Taffy-Studio/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)](https://v2.tauri.app/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
@@ -23,6 +24,24 @@ Windows · macOS · Linux · iOS · Android · 浏览器单文件 · Docker
 > **状态：活跃开发中 —— 桌面端可日常使用，移动端可构建，Web/服务器外壳已能聊天。**
 > 业务逻辑（LLM 分发、SQLite 数据层、MCP、技能、嵌入）集中在一个**平台无关的 `taffy-core` crate**，
 > 桌面（Tauri）与服务器（axum）两个外壳共享同一套核心，前端一套 UI 全端复用。
+
+---
+
+## 📦 下载
+
+> 最新版本 **[v0.0.1](https://github.com/zuoliangyu/Taffy-Studio/releases/latest)** · 完整变更见 [CHANGELOG.md](./CHANGELOG.md)
+
+到 [Releases 页](https://github.com/zuoliangyu/Taffy-Studio/releases) 按平台下载：
+
+| 平台 | 文件 |
+|---|---|
+| Windows | `.msi` / `.exe`（NSIS 安装器）/ `*-portable.exe`（免安装便携版） |
+| macOS | `.dmg`（Intel + Apple Silicon 各一份） |
+| Linux | `.deb` / `.AppImage` |
+| Android | `.apk`（调试签名，可侧载） |
+| Web 服务 | `taffy-web-*` 单文件（各系统），或 Docker 镜像 `ghcr.io/zuoliangyu/taffy-web` |
+
+> 桌面端依赖系统 WebView2（Win11 自带；旧 Win10 可能需装一次）。
 
 ---
 

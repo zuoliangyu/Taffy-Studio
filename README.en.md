@@ -10,6 +10,7 @@ OpenAI / Anthropic / Gemini native protocols · streaming · MCP tools + skills 
 Windows · macOS · Linux · iOS · Android · single-file web binary · Docker
 
 [![CI](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/zuoliangyu/Taffy-Studio?include_prereleases&sort=semver)](https://github.com/zuoliangyu/Taffy-Studio/releases)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Tauri](https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri)](https://v2.tauri.app/)
 [![React](https://img.shields.io/badge/React-18-61DAFB?logo=react)](https://react.dev/)
@@ -24,6 +25,24 @@ Windows · macOS · Linux · iOS · Android · single-file web binary · Docker
 > Business logic (LLM dispatch, the SQLite data layer, MCP, skills, embeddings) lives in one
 > platform-agnostic `taffy-core` crate, shared by the desktop (Tauri) and server (axum) shells,
 > with a single React UI reused across every target.
+
+---
+
+## 📦 Download
+
+> Latest: **[v0.0.1](https://github.com/zuoliangyu/Taffy-Studio/releases/latest)** · full changes in [CHANGELOG.md](./CHANGELOG.md)
+
+Grab a build per platform from the [Releases page](https://github.com/zuoliangyu/Taffy-Studio/releases):
+
+| Platform | Files |
+|---|---|
+| Windows | `.msi` / `.exe` (NSIS installer) / `*-portable.exe` (no-install) |
+| macOS | `.dmg` (Intel + Apple Silicon) |
+| Linux | `.deb` / `.AppImage` |
+| Android | `.apk` (debug-signed, sideload) |
+| Web server | `taffy-web-*` single binary (per OS), or the Docker image `ghcr.io/zuoliangyu/taffy-web` |
+
+> Desktop builds need the system WebView2 runtime (bundled with Win11; older Win10 may need it installed once).
 
 ---
 

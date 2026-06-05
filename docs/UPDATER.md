@@ -78,7 +78,7 @@ https://github.com/zuoliangyu/Taffy-Studio/releases/latest/download/latest.json
 ```
 
 GitHub redirects `/releases/latest/download/<file>` to the latest
-release's asset of that name, so once you push a `v0.1.0` tag the URL
+release's asset of that name, so once you push a `v0.0.1` tag the URL
 becomes self-updating without any extra hosting.
 
 ### 4. Sanity check (optional but recommended)
@@ -93,8 +93,8 @@ the `staged/` artifact dump, signing is working.
 ### 5. Tag a release
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.0.1
+git push origin v0.0.1
 ```
 
 The workflow runs the matrix, signs each updater bundle, generates
@@ -189,7 +189,7 @@ is on disk.
 ## Threat model — what the updater *doesn't* protect against
 
 - **Initial install integrity.** The first download isn't signature-
-  checked — only later updates are. Host the v0.1.0 installer over
+  checked — only later updates are. Host the v0.0.1 installer over
   HTTPS and consider providing a checksum on the README.
 - **Key compromise + a published rogue release.** If someone gets your
   private key AND can push to your repo, they can replace clients in
