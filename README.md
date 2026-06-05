@@ -36,10 +36,10 @@ Windows · macOS · Linux · iOS · Android · 浏览器单文件 · Docker
 | 平台 | 文件 |
 |---|---|
 | Windows | `.msi` / `.exe`（NSIS 安装器）/ `*-portable.exe`（免安装便携版） |
-| macOS | `.dmg`（Intel + Apple Silicon 各一份） |
+| macOS | `.dmg`（通用二进制，Intel + Apple Silicon 一份通吃） |
 | Linux | `.deb` / `.AppImage` |
 | Android | `.apk`（调试签名，可侧载） |
-| Web 服务 | `taffy-web-*` 单文件（各系统），或 Docker 镜像 `ghcr.io/zuoliangyu/taffy-web` |
+| Web 服务 | `taffy-web-*` 单文件（Linux / Windows / macOS 通用二进制），或 Docker 镜像 `ghcr.io/zuoliangyu/taffy-web` |
 
 > 桌面端依赖系统 WebView2（Win11 自带；旧 Win10 可能需装一次）。
 

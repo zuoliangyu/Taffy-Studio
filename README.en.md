@@ -37,10 +37,10 @@ Grab a build per platform from the [Releases page](https://github.com/zuoliangyu
 | Platform | Files |
 |---|---|
 | Windows | `.msi` / `.exe` (NSIS installer) / `*-portable.exe` (no-install) |
-| macOS | `.dmg` (Intel + Apple Silicon) |
+| macOS | `.dmg` (universal binary — one file for Intel + Apple Silicon) |
 | Linux | `.deb` / `.AppImage` |
 | Android | `.apk` (debug-signed, sideload) |
-| Web server | `taffy-web-*` single binary (per OS), or the Docker image `ghcr.io/zuoliangyu/taffy-web` |
+| Web server | `taffy-web-*` single binary (Linux / Windows / macOS universal), or the Docker image `ghcr.io/zuoliangyu/taffy-web` |
 
 > Desktop builds need the system WebView2 runtime (bundled with Win11; older Win10 may need it installed once).
 
