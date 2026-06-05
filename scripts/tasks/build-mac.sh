@@ -2,12 +2,16 @@
 # Unified release builder for Taffy Studio (macOS host).
 #
 # Usage:
-#   ./scripts/tasks/build-mac.sh                # macOS .app + .dmg [default]
+#   ./scripts/tasks/build-mac.sh                # macOS .app + .dmg, host arch [default]
 #   ./scripts/tasks/build-mac.sh mac
+#   ./scripts/tasks/build-mac.sh mac --universal # one universal .dmg (arm64+x86_64), matches CI release
 #   ./scripts/tasks/build-mac.sh ios            # .ipa (sideload-ready)
 #   ./scripts/tasks/build-mac.sh android        # APK (via Docker, same as Windows host)
 #   ./scripts/tasks/build-mac.sh linux          # .deb + AppImage (via Docker)
 #   ./scripts/tasks/build-mac.sh all            # mac + ios + android + linux
+#
+# The default mac/ios build targets the host arch only (fast). --universal builds
+# both apple-darwin arches into one fat bundle — same as the CI desktop release.
 #
 # Why Mac can build everything: macOS hosts can produce mac/ios natively AND
 # run Docker for the Linux/Android Dockerfiles. The only thing they can't easily
@@ -22,9 +26,11 @@ ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 TARGET=""
 DEBUG=0
+UNIVERSAL=0
 for a in "$@"; do
     case "$a" in
         --debug) DEBUG=1 ;;
+        --universal) UNIVERSAL=1 ;;
         *) if [ -z "$TARGET" ]; then TARGET="$a"; else die "Unexpected argument: $a"; fi ;;
     esac
 done
@@ -34,14 +40,15 @@ profile=release; dbg=""
 
 usage() {
     cat <<EOF
-Usage: $0 [mac|ios|android|linux|all|help] [--debug]
+Usage: $0 [mac|ios|android|linux|all|help] [--debug] [--universal]
 
-  mac      tauri build (.app, .dmg)                                   [default]
-  ios      tauri ios build (.ipa for sideload — needs signing team)
-  android  Docker -> APK
-  linux    Docker -> .deb + AppImage
-  all      mac + ios + android + linux
-  --debug  unoptimised debug build (mac/ios native targets; larger, faster)
+  mac        tauri build (.app, .dmg)                                 [default]
+  ios        tauri ios build (.ipa for sideload — needs signing team)
+  android    Docker -> APK
+  linux      Docker -> .deb + AppImage
+  all        mac + ios + android + linux
+  --debug    unoptimised debug build (mac/ios native targets; larger, faster)
+  --universal  one fat arm64+x86_64 mac bundle (matches CI release; mac target only)
 EOF
 }
 
@@ -49,10 +56,17 @@ build_mac() {
     step "Preflight (mac build)"
     ensure_node; ensure_pnpm; ensure_rust
     ensure_app_deps "$ROOT"
-    step "Building macOS bundle ($profile)"
-    (cd "$ROOT" && pnpm tauri build $dbg)
+    local tgt="" bundle="$ROOT/target/$profile/bundle"
+    if [ "$UNIVERSAL" = 1 ]; then
+        # Both arches fused by tauri's universal-apple-darwin target — same as CI.
+        rustup target add aarch64-apple-darwin x86_64-apple-darwin >/dev/null 2>&1 || true
+        tgt="--target universal-apple-darwin"
+        bundle="$ROOT/target/universal-apple-darwin/$profile/bundle"
+    fi
+    step "Building macOS bundle ($profile${tgt:+, universal})"
+    (cd "$ROOT" && pnpm tauri build $dbg $tgt)
     done_ "macOS artifacts:"
-    find "$ROOT/target/$profile/bundle" -maxdepth 2 \( -name '*.app' -o -name '*.dmg' \) | sort
+    find "$bundle" -maxdepth 2 \( -name '*.app' -o -name '*.dmg' \) | sort
 }
 
 build_ios() {

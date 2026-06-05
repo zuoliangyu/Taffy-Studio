@@ -3,8 +3,9 @@
 # Interactive when run with no target.
 #
 #   ./scripts/build.sh                 # interactive menu (target, then mode)
-#   ./scripts/build.sh web             # release web build
+#   ./scripts/build.sh web             # release web build (native arch — fast)
 #   ./scripts/build.sh web --debug     # debug web build
+#   ./scripts/build.sh web --universal # macOS: fat arm64+x86_64 web binary (matches CI)
 #   ./scripts/build.sh all
 #
 # Targets:
@@ -16,6 +17,8 @@
 #
 # --debug applies to the native targets (web, windows): an unoptimised, larger,
 # faster-to-compile build. Docker linux is always release; Android is debug.
+# --universal applies to the macOS web build only (one lipo'd arm64+x86_64 binary,
+# same shape as the CI release). For a universal macOS *desktop* app use build-mac.sh.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
@@ -23,10 +26,12 @@ source "$SCRIPT_DIR/lib/common.sh"
 
 TARGET=""
 DEBUG=0
+UNIVERSAL=0
 for a in "$@"; do
     case "$a" in
         --debug)        DEBUG=1 ;;
-        -h|--help|help) head -n 18 "$0" | tail -n 17; exit 0 ;;
+        --universal)    UNIVERSAL=1 ;;
+        -h|--help|help) head -n 21 "$0" | tail -n 20; exit 0 ;;
         *) if [ -z "$TARGET" ]; then TARGET="$a"; else die "Unexpected argument: $a"; fi ;;
     esac
 done
@@ -66,22 +71,26 @@ if [ -z "$TARGET" ]; then
     fi
 fi
 
-run_sub() { # name script supports_debug(1/0)
-    local name="$1" script="$2" supdbg="$3" dbg=""
+run_sub() { # name script supports_debug(1/0) [extra leaf args...]
+    local name="$1" script="$2" supdbg="$3"; shift 3
+    local dbg=""
     [ "$supdbg" = 1 ] && [ "$DEBUG" = 1 ] && dbg="--debug"
     step "[$name] $(basename "$script")${dbg:+ (debug)}"
-    bash "$SCRIPT_DIR/tasks/$script" $dbg
+    bash "$SCRIPT_DIR/tasks/$script" $dbg "$@"
 }
+
+# --universal is only meaningful for the macOS web binary; pass it through there.
+uni=""; [ "$UNIVERSAL" = 1 ] && uni="--universal"
 
 case "$TARGET" in
     linux)   run_sub linux   build-linux.sh   0 ;;
     android) run_sub android build-android.sh 0 ;;
-    web)     run_sub web     build-web.sh     1 ;;
+    web)     run_sub web     build-web.sh     1 $uni ;;
     windows) run_sub windows build-windows.sh 1 ;;
     all)
         run_sub linux   build-linux.sh   0
         run_sub android build-android.sh 0
-        run_sub web     build-web.sh     1
+        run_sub web     build-web.sh     1 $uni
         ;;
     *) die "Unknown target: $TARGET (try: linux | android | web | windows | all | help)" ;;
 esac
