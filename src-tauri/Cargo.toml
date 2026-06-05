@@ -71,5 +71,5 @@ custom-protocol = ["tauri/custom-protocol"]
 # tests. `bundled` ships SQLite (with FTS5) inside rusqlite so the CI
 # Linux box doesn't need a system libsqlite3 package.
 [dev-dependencies]
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.40", features = ["bundled"] }
 tempfile = "3"
