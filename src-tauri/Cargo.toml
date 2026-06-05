@@ -38,7 +38,7 @@ log = "0.4"
 
 # HTTP + streaming for LLM calls. rustls so we don't depend on system OpenSSL
 # (matters on Android, mobile-friendly).
-reqwest = { version = "0.12", default-features = false, features = [
+reqwest = { version = "0.13", default-features = false, features = [
   "rustls-tls",
   "json",
   "stream",
