@@ -1,3 +1,4 @@
+# Build outputs / caches — never needed inside the image.
 node_modules
 dist
 dist-out
@@ -9,3 +10,21 @@ src-tauri/gen
 .vscode
 *.log
 .DS_Store
+
+# Non-build files. Keeping these OUT of the Docker context is what makes the
+# `COPY . .` layer cache survive doc/script/CI-only commits — otherwise any edit
+# to a README or a shell script invalidates the copy layer and forces a full
+# cold rebuild (pnpm install + 4-ABI Rust cross-compile + Gradle) on every push.
+.github
+.gitattributes
+.gitignore
+.dockerignore
+.editorconfig
+scripts
+docs
+secrets
+.trellis
+.codegraph
+.claude
+*.md
+LICENSE*

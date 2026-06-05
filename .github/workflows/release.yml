@@ -240,41 +240,69 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  # ---- Android via Docker (same image we use locally) ----------------
+  # ---- Android: native build on the runner ---------------------------
+  # Local Android builds still use docker/android.Dockerfile (one image that
+  # works everywhere, incl. Windows hosts). CI builds natively instead so
+  # Swatinem/rust-cache persists the Rust artifacts across runs — the Docker
+  # build re-ran a cold 4-ABI cross-compile whenever any context file changed.
+  # We ship two ABIs: aarch64 (real devices) + x86_64 (emulators).
   android:
-    name: Android (Docker)
+    name: Android (native)
     runs-on: ubuntu-latest
+    env:
+      NDK_VERSION: 27.0.12077973
     steps:
       - uses: actions/checkout@v6
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Android image (cached layers)
-        uses: docker/build-push-action@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v6
         with:
-          context: .
-          file: docker/android.Dockerfile
-          load: true
-          tags: taffy-studio-android:ci
-          # CI runs outside mainland China — pull the SDK/NDK from Google directly
-          # (fast from GitHub's runners). The Dockerfile default is the Tencent
-          # mirror, which is for local builds in CN.
-          build-args: |
-            ANDROID_MIRROR=https://dl.google.com/android/repository
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          node-version: 20
+          cache: pnpm
 
-      - name: Extract APKs / AABs
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Rust toolchain (Android ABIs)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: . -> target
+          key: android
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK + platform + build-tools
+        run: sdkmanager "ndk;${NDK_VERSION}" "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
+      - name: Install JS deps
+        run: pnpm install --frozen-lockfile
+
+      - name: Build APK (aarch64 + x86_64)
         run: |
-          mkdir -p dist-out/android
-          docker run --rm -v "${PWD}/dist-out/android:/out" taffy-studio-android:ci
-          ls -lah dist-out/android
+          export NDK_HOME="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
+          echo "NDK_HOME=$NDK_HOME"
+          pnpm android:init || true            # scaffold src-tauri/gen/android (gitignored)
+          pnpm android:build --apk --debug --target aarch64 x86_64
+
+      - name: Collect APKs
+        shell: bash
+        run: |
+          mkdir -p staged
+          find src-tauri/gen/android -name '*.apk' -exec cp -v {} staged/ \;
+          ls -lah staged
 
       - uses: actions/upload-artifact@v7
         with:
           name: android
-          path: dist-out/android/
+          path: staged/
           if-no-files-found: error
 
   # ---- Aggregate + publish GH Release --------------------------------

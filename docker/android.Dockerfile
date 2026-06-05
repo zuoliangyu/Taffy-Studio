@@ -56,10 +56,10 @@ RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - \
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
     | sh -s -- -y --profile minimal --default-toolchain ${RUST_VERSION}
 ENV PATH=/root/.cargo/bin:${PATH}
+# Only the two ABIs we ship: aarch64 (all modern real devices) + x86_64
+# (emulators). Dropping armv7/i686 (old 32-bit) roughly halves the Rust build.
 RUN rustup target add \
     aarch64-linux-android \
-    armv7-linux-androideabi \
-    i686-linux-android \
     x86_64-linux-android
 
 # --- Android cmdline-tools + SDK + NDK ---
@@ -103,7 +103,8 @@ RUN pnpm build
 RUN pnpm android:init || true
 
 # Sign-debug for sideload; release signing requires a keystore — see DOCKER.md.
-RUN pnpm android:build --apk --debug
+# --target limits the ABIs to the two we ship (matches the rustup targets above).
+RUN pnpm android:build --apk --debug --target aarch64 x86_64
 
 FROM ubuntu:22.04 AS export
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates rsync && rm -rf /var/lib/apt/lists/*
