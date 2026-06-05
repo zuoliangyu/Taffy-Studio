@@ -2,9 +2,9 @@
 # Generate platform icons for Tauri (bash counterpart of gen-icons.ps1).
 #
 # Usage:
-#   ./scripts/gen-icons.sh                      # draw a placeholder, then generate
-#   ./scripts/gen-icons.sh ~/art/logo-1024.png  # use your own master PNG
-#   LETTERS=AI COLOR=30,30,40 ./scripts/gen-icons.sh
+#   ./scripts/tasks/gen-icons.sh                      # draw a placeholder, then generate
+#   ./scripts/tasks/gen-icons.sh ~/art/logo-1024.png  # use your own master PNG
+#   LETTERS=AI COLOR=30,30,40 ./scripts/tasks/gen-icons.sh
 #
 # If you pass a master PNG it's used directly. Otherwise a 1024x1024 placeholder
 # is drawn (needs ImageMagick: `brew install imagemagick` / `apt install
@@ -16,13 +16,13 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/../lib/common.sh"
 
 case "${1:-}" in
     -h|--help) head -n 12 "$0" | tail -n 11; exit 0 ;;
 esac
 
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 ICONS_DIR="$ROOT/src-tauri/icons"
 mkdir -p "$ICONS_DIR"
 
@@ -37,7 +37,7 @@ if [[ -z "$INPUT" ]]; then
     else
         die "No master image given and ImageMagick not found.
   Install it (brew install imagemagick / apt-get install imagemagick) or pass a PNG:
-    ./scripts/gen-icons.sh /path/to/logo-1024.png"
+    ./scripts/tasks/gen-icons.sh /path/to/logo-1024.png"
     fi
 
     IFS=',' read -r R G B <<<"$COLOR"

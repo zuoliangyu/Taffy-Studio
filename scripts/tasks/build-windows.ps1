@@ -20,7 +20,7 @@ param(
     [switch]$DebugBuild
 )
 
-. "$PSScriptRoot\lib\common.ps1"
+. "$PSScriptRoot\..\lib\common.ps1"
 
 $root = Get-AppRoot
 

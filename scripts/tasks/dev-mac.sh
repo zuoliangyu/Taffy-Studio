@@ -2,18 +2,18 @@
 # Unified dev launcher for Taffy Studio (macOS host).
 #
 # Usage:
-#   ./scripts/dev-mac.sh                # desktop (Mac native window)
-#   ./scripts/dev-mac.sh desktop
-#   ./scripts/dev-mac.sh ios            # iOS simulator or device
-#   ./scripts/dev-mac.sh android        # emulator or USB device
+#   ./scripts/tasks/dev-mac.sh                # desktop (Mac native window)
+#   ./scripts/tasks/dev-mac.sh desktop
+#   ./scripts/tasks/dev-mac.sh ios            # iOS simulator or device
+#   ./scripts/tasks/dev-mac.sh android        # emulator or USB device
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/../lib/common.sh"
 
 TARGET="${1:-desktop}"
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 usage() {
     cat <<EOF

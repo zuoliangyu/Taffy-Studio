@@ -16,7 +16,7 @@ param(
     [switch]$NoCache
 )
 
-. "$PSScriptRoot\lib\common.ps1"
+. "$PSScriptRoot\..\lib\common.ps1"
 
 $root = Get-AppRoot
 

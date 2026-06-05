@@ -68,7 +68,7 @@ case "$TARGET" in
         ;;
 
     ios)
-        [[ "$(uname -s)" == "Darwin" ]] || die "iOS dev requires macOS + Xcode. Use a Mac: ./scripts/dev-mac.sh ios"
+        [[ "$(uname -s)" == "Darwin" ]] || die "iOS dev requires macOS + Xcode. Use a Mac: ./scripts/tasks/dev-mac.sh ios"
         ensure_xcode
         ensure_ios_rust_targets
         if [[ ! -d "$ROOT/src-tauri/gen/apple" ]]; then

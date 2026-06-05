@@ -20,9 +20,9 @@
   Background color, "R,G,B" decimal.
 
 .EXAMPLE
-  .\scripts\gen-icons.ps1
-  .\scripts\gen-icons.ps1 -InputPath C:\art\logo-1024.png
-  .\scripts\gen-icons.ps1 -Letters "AI" -Color "30,30,40"
+  .\scripts\tasks\gen-icons.ps1
+  .\scripts\tasks\gen-icons.ps1 -InputPath C:\art\logo-1024.png
+  .\scripts\tasks\gen-icons.ps1 -Letters "AI" -Color "30,30,40"
 #>
 [CmdletBinding()]
 param(
@@ -31,7 +31,7 @@ param(
     [string]$Color = '79,140,255'
 )
 
-. "$PSScriptRoot\lib\common.ps1"
+. "$PSScriptRoot\..\lib\common.ps1"
 
 $root = Get-AppRoot
 $iconsDir = Join-Path $root 'src-tauri\icons'

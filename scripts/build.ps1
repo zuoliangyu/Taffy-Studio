@@ -87,15 +87,15 @@ function Invoke-SubBuild {
 }
 
 switch ($Target) {
-    'windows' { Invoke-SubBuild 'windows' (Join-Path $scriptsDir 'build-windows.ps1') $true }
-    'linux'   { Invoke-SubBuild 'linux'   (Join-Path $scriptsDir 'build-linux.ps1')   $false }
-    'android' { Invoke-SubBuild 'android' (Join-Path $scriptsDir 'build-android.ps1') $false }
-    'web'     { Invoke-SubBuild 'web'     (Join-Path $scriptsDir 'build-web.ps1')     $true }
+    'windows' { Invoke-SubBuild 'windows' (Join-Path $scriptsDir 'tasks\build-windows.ps1') $true }
+    'linux'   { Invoke-SubBuild 'linux'   (Join-Path $scriptsDir 'tasks\build-linux.ps1')   $false }
+    'android' { Invoke-SubBuild 'android' (Join-Path $scriptsDir 'tasks\build-android.ps1') $false }
+    'web'     { Invoke-SubBuild 'web'     (Join-Path $scriptsDir 'tasks\build-web.ps1')     $true }
     'all' {
-        Invoke-SubBuild 'windows' (Join-Path $scriptsDir 'build-windows.ps1') $true
-        Invoke-SubBuild 'linux'   (Join-Path $scriptsDir 'build-linux.ps1')   $false
-        Invoke-SubBuild 'web'     (Join-Path $scriptsDir 'build-web.ps1')     $true
-        Invoke-SubBuild 'android' (Join-Path $scriptsDir 'build-android.ps1') $false
+        Invoke-SubBuild 'windows' (Join-Path $scriptsDir 'tasks\build-windows.ps1') $true
+        Invoke-SubBuild 'linux'   (Join-Path $scriptsDir 'tasks\build-linux.ps1')   $false
+        Invoke-SubBuild 'web'     (Join-Path $scriptsDir 'tasks\build-web.ps1')     $true
+        Invoke-SubBuild 'android' (Join-Path $scriptsDir 'tasks\build-android.ps1') $false
     }
 }
 

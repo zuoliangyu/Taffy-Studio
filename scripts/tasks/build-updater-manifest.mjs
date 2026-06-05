@@ -7,7 +7,7 @@
 // downloads all the matrix artifacts into a single folder.
 //
 // Usage:
-//   node scripts/build-updater-manifest.mjs \
+//   node scripts/tasks/build-updater-manifest.mjs \
 //        --in  artifacts \
 //        --out latest.json \
 //        --version 0.1.0 \

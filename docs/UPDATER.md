@@ -34,12 +34,12 @@ From a checkout of this repo, run **one** of:
 
 ```powershell
 # Windows
-.\scripts\setup-updater.ps1
+.\scripts\tasks\setup-updater.ps1
 ```
 
 ```bash
 # macOS / Linux
-./scripts/setup-updater.sh
+./scripts/tasks/setup-updater.sh
 ```
 
 The script will:
@@ -136,7 +136,7 @@ If a private key leaks (or you simply rotate annually):
 
 1. Generate a new keypair:
    ```bash
-   ./scripts/setup-updater.sh   # FORCE=1 to overwrite the old key
+   ./scripts/tasks/setup-updater.sh   # FORCE=1 to overwrite the old key
    ```
 2. Update both GitHub secrets to the new private key + passphrase.
 3. Commit + push the new `pubkey` in `tauri.conf.json`.

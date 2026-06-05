@@ -2,9 +2,9 @@
 # Run the same checks as GitHub Actions CI, inside Docker.
 #
 # Usage:
-#   ./scripts/ci-local.sh           # normal run
-#   ./scripts/ci-local.sh --reset   # wipe cached volumes (node_modules / cargo / target)
-#   ./scripts/ci-local.sh --no-cache  # rebuild the CI image from scratch
+#   ./scripts/tasks/ci-local.sh           # normal run
+#   ./scripts/tasks/ci-local.sh --reset   # wipe cached volumes (node_modules / cargo / target)
+#   ./scripts/tasks/ci-local.sh --no-cache  # rebuild the CI image from scratch
 #
 # First run builds the CI image (~5-10 min, ~1.5 GB). Subsequent runs reuse
 # cached node_modules and cargo registry via named volumes (~2-3 min).
@@ -12,7 +12,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/../lib/common.sh"
 
 RESET=0
 NO_CACHE=0
@@ -28,7 +28,7 @@ for arg in "$@"; do
     esac
 done
 
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
 step "Preflight"

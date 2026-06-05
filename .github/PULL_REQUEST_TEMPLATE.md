@@ -6,7 +6,7 @@
 
 - [ ] `tsc -b` passes (TypeScript strict mode)
 - [ ] `cargo fmt --all` run, and `cargo clippy --all-targets -- -D warnings` is clean
-- [ ] Ran `ci-local` locally (`scripts/ci-local.ps1` / `.sh`)
+- [ ] Ran `ci-local` locally (`scripts/tasks/ci-local.ps1` / `.sh`)
 - [ ] JS → Rust calls go through `src/lib/ipc.ts` (no inline `invoke()` in components)
 - [ ] Business logic lives in `crates/taffy-core` (no `tauri::` / `axum::` types there)
 - [ ] Updated README / docs if behaviour, commands, or config changed

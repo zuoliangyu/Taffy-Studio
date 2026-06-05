@@ -8,14 +8,14 @@
   Run it, your browser opens to the app. Data goes to ./taffy.db by default
   (override with --db-path), keys come from TAFFY_*_API_KEY env vars.
 .EXAMPLE
-  .\scripts\build-web.ps1
-  .\scripts\build-web.ps1 -Run         # build, then launch it
-  .\scripts\build-web.ps1 -DebugBuild  # unoptimised debug build (larger, faster compile)
+  .\scripts\tasks\build-web.ps1
+  .\scripts\tasks\build-web.ps1 -Run         # build, then launch it
+  .\scripts\tasks\build-web.ps1 -DebugBuild  # unoptimised debug build (larger, faster compile)
 #>
 [CmdletBinding()]
 param([switch]$Run, [switch]$DebugBuild)
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $root
 $profileDir = if ($DebugBuild) { 'debug' } else { 'release' }
 

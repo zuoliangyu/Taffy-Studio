@@ -5,9 +5,9 @@
 # overwrite an existing private key unless asked.
 #
 # Run from anywhere in the repo:
-#   .\scripts\setup-updater.ps1
-#   .\scripts\setup-updater.ps1 -Force        # regenerate even if key exists
-#   .\scripts\setup-updater.ps1 -NoPassword   # generate a key with no passphrase
+#   .\scripts\tasks\setup-updater.ps1
+#   .\scripts\tasks\setup-updater.ps1 -Force        # regenerate even if key exists
+#   .\scripts\tasks\setup-updater.ps1 -NoPassword   # generate a key with no passphrase
 #                                              # (only use for throwaway demos)
 
 [CmdletBinding()]
@@ -19,7 +19,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 # Resolve repo root from this script's location, regardless of cwd.
-$repoRoot   = Split-Path -Parent $PSScriptRoot
+$repoRoot   = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $secretsDir = Join-Path $repoRoot 'secrets'
 $keyPath    = Join-Path $secretsDir 'taffy-updater.key'
 $pubPath    = "$keyPath.pub"

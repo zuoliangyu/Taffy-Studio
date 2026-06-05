@@ -3,15 +3,15 @@
 # tauri.conf.json, and print exactly what to paste into GitHub Secrets.
 #
 # Usage:
-#   ./scripts/setup-updater.sh                # generate + prompt for passphrase
-#   FORCE=1 ./scripts/setup-updater.sh        # overwrite existing key
-#   NO_PASSWORD=1 ./scripts/setup-updater.sh  # generate with no passphrase
+#   ./scripts/tasks/setup-updater.sh                # generate + prompt for passphrase
+#   FORCE=1 ./scripts/tasks/setup-updater.sh        # overwrite existing key
+#   NO_PASSWORD=1 ./scripts/tasks/setup-updater.sh  # generate with no passphrase
 #                                             # (only for throwaway demos)
 set -euo pipefail
 
 # Resolve repo root from this script's location, regardless of cwd.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 SECRETS_DIR="$REPO_ROOT/secrets"
 KEY_PATH="$SECRETS_DIR/taffy-updater.key"
 PUB_PATH="$KEY_PATH.pub"

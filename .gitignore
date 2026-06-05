@@ -75,7 +75,7 @@ keys/
 *.tauri.key
 *.tauri.key.enc
 
-# `scripts/setup-updater.{ps1,sh}` writes the freshly-generated private key
+# `scripts/tasks/setup-updater.{ps1,sh}` writes the freshly-generated private key
 # here. Nothing else should ever live in this directory.
 secrets/
 

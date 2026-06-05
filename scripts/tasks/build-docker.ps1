@@ -7,9 +7,9 @@
   web UI in the browser. Unlike dev-docker.ps1 (build + run for local testing),
   this only produces/publishes the image.
 .EXAMPLE
-  .\scripts\build-docker.ps1
-  .\scripts\build-docker.ps1 -Tag ghcr.io/you/taffy-web:0.1.0 -Push
-  .\scripts\build-docker.ps1 -NoCache
+  .\scripts\tasks\build-docker.ps1
+  .\scripts\tasks\build-docker.ps1 -Tag ghcr.io/you/taffy-web:0.1.0 -Push
+  .\scripts\tasks\build-docker.ps1 -NoCache
 #>
 [CmdletBinding()]
 param(
@@ -18,7 +18,7 @@ param(
   [switch]$NoCache
 )
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $root
 
 $buildArgs = @('build', '-f', 'docker/web.Dockerfile', '-t', $Tag)

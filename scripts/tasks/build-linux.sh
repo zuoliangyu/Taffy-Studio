@@ -2,8 +2,8 @@
 # Build Linux release artifacts (deb + AppImage) via Docker.
 #
 # Usage:
-#   ./scripts/build-linux.sh             # build
-#   ./scripts/build-linux.sh --no-cache  # force a clean rebuild of the image
+#   ./scripts/tasks/build-linux.sh             # build
+#   ./scripts/tasks/build-linux.sh --no-cache  # force a clean rebuild of the image
 #
 # Runs the multi-stage build in docker/linux.Dockerfile, then extracts the
 # bundle to ./dist-out/linux/. First build is ~10-15 min; later builds reuse
@@ -14,7 +14,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/../lib/common.sh"
 
 NO_CACHE=0
 for arg in "$@"; do
@@ -25,7 +25,7 @@ for arg in "$@"; do
     esac
 done
 
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 cd "$ROOT"
 
 step "Preflight (Linux via Docker)"

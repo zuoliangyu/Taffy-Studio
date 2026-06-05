@@ -84,7 +84,7 @@ switch ($Target) {
 iOS dev requires macOS + Xcode. You cannot run it on Windows.
 
 On a Mac:
-  ./scripts/dev-mac.sh ios
+  ./scripts/tasks/dev-mac.sh ios
 "@
     }
 

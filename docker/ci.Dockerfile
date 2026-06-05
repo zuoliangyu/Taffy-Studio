@@ -3,7 +3,7 @@
 # Usage:
 #   docker compose run --rm ci
 # Or:
-#   pwsh scripts/ci-local.ps1
+#   pwsh scripts/tasks/ci-local.ps1
 #
 # Runs (in order, fail-fast):
 #   1. pnpm install --frozen-lockfile

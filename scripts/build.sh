@@ -70,7 +70,7 @@ run_sub() { # name script supports_debug(1/0)
     local name="$1" script="$2" supdbg="$3" dbg=""
     [ "$supdbg" = 1 ] && [ "$DEBUG" = 1 ] && dbg="--debug"
     step "[$name] $(basename "$script")${dbg:+ (debug)}"
-    bash "$SCRIPT_DIR/$script" $dbg
+    bash "$SCRIPT_DIR/tasks/$script" $dbg
 }
 
 case "$TARGET" in

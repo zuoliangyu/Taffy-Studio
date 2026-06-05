@@ -8,9 +8,9 @@
   shell environment are forwarded into the container; the server injects them
   into LLM requests (the browser never sees them).
 .EXAMPLE
-  .\scripts\dev-docker.ps1
-  .\scripts\dev-docker.ps1 -Port 9000 -Token secret
-  .\scripts\dev-docker.ps1 -NoCache
+  .\scripts\tasks\dev-docker.ps1
+  .\scripts\tasks\dev-docker.ps1 -Port 9000 -Token secret
+  .\scripts\tasks\dev-docker.ps1 -NoCache
 #>
 [CmdletBinding()]
 param(
@@ -19,7 +19,7 @@ param(
   [switch]$NoCache
 )
 $ErrorActionPreference = 'Stop'
-$root = Split-Path -Parent $PSScriptRoot
+$root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Set-Location $root
 
 # Always build. Docker's layer cache makes this near-instant when nothing

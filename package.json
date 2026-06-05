@@ -23,10 +23,10 @@
     "build:linux": "powershell -ExecutionPolicy Bypass -File scripts/build.ps1 linux",
     "build:android": "powershell -ExecutionPolicy Bypass -File scripts/build.ps1 android",
     "build:all": "powershell -ExecutionPolicy Bypass -File scripts/build.ps1 all",
-    "ci:local": "powershell -ExecutionPolicy Bypass -File scripts/ci-local.ps1",
-    "mac:dev": "bash scripts/dev-mac.sh",
-    "mac:build": "bash scripts/build-mac.sh",
-    "mac:ci": "bash scripts/ci-local.sh"
+    "ci:local": "powershell -ExecutionPolicy Bypass -File scripts/tasks/ci-local.ps1",
+    "mac:dev": "bash scripts/tasks/dev-mac.sh",
+    "mac:build": "bash scripts/tasks/build-mac.sh",
+    "mac:ci": "bash scripts/tasks/ci-local.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

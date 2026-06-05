@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Build + run the taffy-web (self-hosted web) image locally for testing.
 #
-#   ./scripts/dev-docker.sh                 # build + run on :8787
-#   PORT=9000 ./scripts/dev-docker.sh
-#   TAFFY_TOKEN=secret ./scripts/dev-docker.sh
-#   NOCACHE=1 ./scripts/dev-docker.sh       # force a clean rebuild
+#   ./scripts/tasks/dev-docker.sh                 # build + run on :8787
+#   PORT=9000 ./scripts/tasks/dev-docker.sh
+#   TAFFY_TOKEN=secret ./scripts/tasks/dev-docker.sh
+#   NOCACHE=1 ./scripts/tasks/dev-docker.sh       # force a clean rebuild
 #
 # Provider keys present in your shell (TAFFY_API_KEY / TAFFY_OPENAI_API_KEY /
 # TAFFY_ANTHROPIC_API_KEY / TAFFY_GEMINI_API_KEY) are forwarded into the
@@ -15,7 +15,7 @@ PORT="${PORT:-8787}"
 IMG="taffy-web:dev"
 NOCACHE="${NOCACHE:-0}"
 
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 # Always build. Docker's layer cache makes this near-instant when nothing
 # changed and only rebuilds what changed, so you always run the latest code.

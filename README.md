@@ -107,16 +107,16 @@ pnpm tauri:dev      # 首次会编译约 400 个 Rust crate（5–10 分钟）
 
 ```powershell
 # Windows：产出 dist-out\web\taffy-web.exe，构建完直接运行（自动开浏览器）
-.\scripts\build-web.ps1 -Run
+.\scripts\tasks\build-web.ps1 -Run
 ```
 ```bash
 # macOS / Linux：产出 dist-out/web/taffy-web
-RUN=1 ./scripts/build-web.sh
+RUN=1 ./scripts/tasks/build-web.sh
 ```
 
 - 默认监听 `127.0.0.1:8787`、数据存 `./taffy.db`。`--host 0.0.0.0` 对外暴露，`--db-path` 改数据位置，`--token <密钥>` 开单用户鉴权，`--no-open` 关闭自动开浏览器。
 - 服务商密钥从环境变量注入（`TAFFY_OPENAI_API_KEY` / `TAFFY_ANTHROPIC_API_KEY` / `TAFFY_GEMINI_API_KEY` / 兜底 `TAFFY_API_KEY`）—— 浏览器永不接触密钥。
-- Docker 测试：`.\scripts\dev-docker.ps1`（或 `./scripts/dev-docker.sh`），见 `docker/web.Dockerfile`。
+- Docker 测试：`.\scripts\tasks\dev-docker.ps1`（或 `./scripts/tasks/dev-docker.sh`），见 `docker/web.Dockerfile`。
 
 > 当前 Web 端：聊天 + 会话历史可用；全文搜索 / RAG / 导入导出仍在语义化中。
 
@@ -170,16 +170,16 @@ RUN=1 ./scripts/build-web.sh
 |---|---|---|
 | 桌面开发（热重载） | `.\scripts\dev.ps1` | `./scripts/dev.sh` |
 | Android 开发 | `.\scripts\dev.ps1 android` | `./scripts/dev.sh android` |
-| iOS 开发 | —（Apple 限定） | `./scripts/dev-mac.sh ios` |
-| 构建 Windows 安装包 | `.\scripts\build-windows.ps1` | `./scripts/build-windows.sh`¹ |
-| 构建 Linux（Docker） | `.\scripts\build-linux.ps1` | `./scripts/build-linux.sh` |
-| 构建 Android（Docker） | `.\scripts\build-android.ps1` | `./scripts/build-android.sh` |
-| 构建 macOS / iOS | —（Apple 限定） | `./scripts/build-mac.sh` / `build-mac.sh ios` |
-| 构建 Web 单文件 | `.\scripts\build-web.ps1` | `./scripts/build-web.sh` |
-| 构建 / 推送 Docker 镜像 | `.\scripts\build-docker.ps1` | `./scripts/build-docker.sh` |
+| iOS 开发 | —（Apple 限定） | `./scripts/tasks/dev-mac.sh ios` |
+| 构建 Windows 安装包 | `.\scripts\tasks\build-windows.ps1` | `./scripts/tasks/build-windows.sh`¹ |
+| 构建 Linux（Docker） | `.\scripts\tasks\build-linux.ps1` | `./scripts/tasks/build-linux.sh` |
+| 构建 Android（Docker） | `.\scripts\tasks\build-android.ps1` | `./scripts/tasks/build-android.sh` |
+| 构建 macOS / iOS | —（Apple 限定） | `./scripts/tasks/build-mac.sh` / `build-mac.sh ios` |
+| 构建 Web 单文件 | `.\scripts\tasks\build-web.ps1` | `./scripts/tasks/build-web.sh` |
+| 构建 / 推送 Docker 镜像 | `.\scripts\tasks\build-docker.ps1` | `./scripts/tasks/build-docker.sh` |
 | 统一调度器 | `.\scripts\build.ps1 <target>` | `./scripts/build.sh <target>` |
-| 生成图标 | `.\scripts\gen-icons.ps1` | `./scripts/gen-icons.sh` |
-| 本地 CI（推送前自检） | `.\scripts\ci-local.ps1` | `./scripts/ci-local.sh` |
+| 生成图标 | `.\scripts\tasks\gen-icons.ps1` | `./scripts/tasks/gen-icons.sh` |
+| 本地 CI（推送前自检） | `.\scripts\tasks\ci-local.ps1` | `./scripts/tasks/ci-local.sh` |
 
 > ¹ Windows 安装包只能在 Windows 主机上产出；`build-windows.sh` 供 Git Bash / MSYS2 用户使用。
 > macOS / iOS 只能在真机 Mac 上构建（Apple EULA 限制），故没有对应的 `.ps1`。
@@ -193,7 +193,7 @@ RUN=1 ./scripts/build-web.sh
 在本地 Docker 里跑与 GitHub Actions **完全相同**的检查：
 
 ```powershell
-.\scripts\ci-local.ps1        # macOS/Linux：./scripts/ci-local.sh
+.\scripts\tasks\ci-local.ps1        # macOS/Linux：./scripts/tasks/ci-local.sh
 ```
 
 对应 [`.github/workflows/ci.yml`](.github/workflows/ci.yml)：

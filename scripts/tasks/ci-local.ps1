@@ -17,8 +17,8 @@
   Use this if cached state gets weird (e.g. lockfile changes broke deps).
 
 .EXAMPLE
-  .\scripts\ci-local.ps1
-  .\scripts\ci-local.ps1 -Reset
+  .\scripts\tasks\ci-local.ps1
+  .\scripts\tasks\ci-local.ps1 -Reset
 #>
 [CmdletBinding()]
 param(
@@ -26,7 +26,7 @@ param(
     [switch]$Reset
 )
 
-. "$PSScriptRoot\lib\common.ps1"
+. "$PSScriptRoot\..\lib\common.ps1"
 
 $root = Get-AppRoot
 

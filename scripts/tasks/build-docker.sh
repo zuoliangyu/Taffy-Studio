@@ -4,11 +4,11 @@
 # Unlike dev-docker.sh (build + run for local testing), this only builds /
 # publishes the image.
 #
-#   ./scripts/build-docker.sh                              # -> taffy-web:latest
-#   TAG=ghcr.io/you/taffy-web:0.1.0 PUSH=1 ./scripts/build-docker.sh
-#   NOCACHE=1 ./scripts/build-docker.sh
+#   ./scripts/tasks/build-docker.sh                              # -> taffy-web:latest
+#   TAG=ghcr.io/you/taffy-web:0.1.0 PUSH=1 ./scripts/tasks/build-docker.sh
+#   NOCACHE=1 ./scripts/tasks/build-docker.sh
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 TAG="${TAG:-taffy-web:latest}"
 PUSH="${PUSH:-0}"

@@ -2,9 +2,9 @@
 # Build Windows release artifacts (NSIS installer + MSI) natively.
 #
 # Usage:
-#   ./scripts/build-windows.sh                 # nsis,msi [default]
-#   ./scripts/build-windows.sh nsis            # only the NSIS installer
-#   ./scripts/build-windows.sh "nsis,msi,app"  # custom bundle list
+#   ./scripts/tasks/build-windows.sh                 # nsis,msi [default]
+#   ./scripts/tasks/build-windows.sh nsis            # only the NSIS installer
+#   ./scripts/tasks/build-windows.sh "nsis,msi,app"  # custom bundle list
 #
 # This is the bash counterpart of build-windows.ps1, for users who drive the
 # Windows build from Git Bash / MSYS2 / WSL-with-Windows-toolchain. It still
@@ -16,7 +16,7 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/../lib/common.sh"
 
 DEBUG=0
 TARGETS=""
@@ -31,7 +31,7 @@ TARGETS="${TARGETS:-nsis,msi}"
 profile=release
 [ "$DEBUG" = 1 ] && profile=debug
 
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 case "$(uname -s)" in
     MINGW*|MSYS*|CYGWIN*) : ;;  # Git Bash / MSYS on Windows — OK.

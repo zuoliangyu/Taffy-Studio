@@ -2,12 +2,12 @@
 # Unified release builder for Taffy Studio (macOS host).
 #
 # Usage:
-#   ./scripts/build-mac.sh                # macOS .app + .dmg [default]
-#   ./scripts/build-mac.sh mac
-#   ./scripts/build-mac.sh ios            # .ipa (sideload-ready)
-#   ./scripts/build-mac.sh android        # APK (via Docker, same as Windows host)
-#   ./scripts/build-mac.sh linux          # .deb + AppImage (via Docker)
-#   ./scripts/build-mac.sh all            # mac + ios + android + linux
+#   ./scripts/tasks/build-mac.sh                # macOS .app + .dmg [default]
+#   ./scripts/tasks/build-mac.sh mac
+#   ./scripts/tasks/build-mac.sh ios            # .ipa (sideload-ready)
+#   ./scripts/tasks/build-mac.sh android        # APK (via Docker, same as Windows host)
+#   ./scripts/tasks/build-mac.sh linux          # .deb + AppImage (via Docker)
+#   ./scripts/tasks/build-mac.sh all            # mac + ios + android + linux
 #
 # Why Mac can build everything: macOS hosts can produce mac/ios natively AND
 # run Docker for the Linux/Android Dockerfiles. The only thing they can't easily
@@ -16,9 +16,9 @@
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=lib/common.sh
-source "$SCRIPT_DIR/lib/common.sh"
+source "$SCRIPT_DIR/../lib/common.sh"
 
-ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 TARGET=""
 DEBUG=0

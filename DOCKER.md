@@ -7,8 +7,8 @@
 | 目标 | 方式 | 命令 | 耗时（首次） |
 |---|---|---|---|
 | **Windows** | 本机 | `pnpm tauri:build` | 5–10 分钟 |
-| **Linux deb + AppImage** | Docker | `pwsh scripts/build-linux.ps1` | 10–15 分钟 |
-| **Android APK** | Docker | `pwsh scripts/build-android.ps1` | 25–45 分钟（含 SDK/NDK 下载） |
+| **Linux deb + AppImage** | Docker | `pwsh scripts/tasks/build-linux.ps1` | 10–15 分钟 |
+| **Android APK** | Docker | `pwsh scripts/tasks/build-android.ps1` | 25–45 分钟（含 SDK/NDK 下载） |
 | **macOS** | 真 Mac 本机 | `pnpm tauri:build` | 5–10 分钟 |
 | **iOS** | 真 Mac + Xcode | `pnpm ios:build` | 5–10 分钟 |
 | **开发热重载** | 本机 | `pnpm tauri:dev` | — |
@@ -29,7 +29,7 @@
 
 ```powershell
 cd app
-.\scripts\build-linux.ps1
+.\scripts\tasks\build-linux.ps1
 ```
 
 产物在 `./dist-out/linux/`：
@@ -45,7 +45,7 @@ RUN apt-get install -y --no-install-recommends rpm
 
 ```powershell
 cd app
-.\scripts\build-android.ps1
+.\scripts\tasks\build-android.ps1
 ```
 
 **第一次会下载 ~6 GB 的 Android SDK + NDK**，之后镜像层缓存住，重建只跑 Rust + Gradle。

@@ -6,7 +6,7 @@
 # This is a RUNTIME image (a server you open in a browser), distinct from the
 # docker/ build images that only cross-compile desktop/Android packages.
 #
-# Usage: see scripts/dev-docker.ps1 / scripts/dev-docker.sh.
+# Usage: see scripts/tasks/dev-docker.ps1 / scripts/tasks/dev-docker.sh.
 
 # ---- frontend ----
 FROM node:lts AS frontend

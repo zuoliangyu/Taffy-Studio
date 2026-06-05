@@ -6,11 +6,11 @@
 # Run it; your browser opens to the app. Data goes to ./taffy.db by default
 # (override with --db-path); provider keys come from TAFFY_*_API_KEY env vars.
 #
-#   ./scripts/build-web.sh           # release build
-#   ./scripts/build-web.sh --debug   # unoptimised debug build (larger, faster compile)
-#   RUN=1 ./scripts/build-web.sh     # build, then launch it
+#   ./scripts/tasks/build-web.sh           # release build
+#   ./scripts/tasks/build-web.sh --debug   # unoptimised debug build (larger, faster compile)
+#   RUN=1 ./scripts/tasks/build-web.sh     # build, then launch it
 set -euo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/../.."
 
 profile=release
 cargo_release=--release

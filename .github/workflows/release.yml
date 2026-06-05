@@ -272,7 +272,7 @@ jobs:
       - name: Generate updater manifest (latest.json)
         run: |
           version="${GITHUB_REF_NAME#v}"
-          node scripts/build-updater-manifest.mjs \
+          node scripts/tasks/build-updater-manifest.mjs \
             --in  release \
             --out release/latest.json \
             --version "$version" \

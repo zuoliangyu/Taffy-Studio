@@ -108,16 +108,16 @@ The same code compiles to a **single executable**: run it, open a browser, no de
 
 ```powershell
 # Windows: produces dist-out\web\taffy-web.exe and runs it (auto-opens the browser)
-.\scripts\build-web.ps1 -Run
+.\scripts\tasks\build-web.ps1 -Run
 ```
 ```bash
 # macOS / Linux: produces dist-out/web/taffy-web
-RUN=1 ./scripts/build-web.sh
+RUN=1 ./scripts/tasks/build-web.sh
 ```
 
 - Defaults to `127.0.0.1:8787` with data in `./taffy.db`. `--host 0.0.0.0` to expose, `--db-path` to relocate data, `--token <secret>` for single-user auth, `--no-open` to skip the browser.
 - Provider keys are injected from env vars (`TAFFY_OPENAI_API_KEY` / `TAFFY_ANTHROPIC_API_KEY` / `TAFFY_GEMINI_API_KEY` / fallback `TAFFY_API_KEY`) — the browser never sees them.
-- Docker test drive: `.\scripts\dev-docker.ps1` (or `./scripts/dev-docker.sh`), see `docker/web.Dockerfile`.
+- Docker test drive: `.\scripts\tasks\dev-docker.ps1` (or `./scripts/tasks/dev-docker.sh`), see `docker/web.Dockerfile`.
 
 > Web today: chat + conversation history work; full-text search / RAG / import-export are still being made semantic.
 
@@ -171,16 +171,16 @@ All packaged artifacts land under **`dist-out/<platform>/`** (desktop installers
 |---|---|---|
 | Desktop dev (hot-reload) | `.\scripts\dev.ps1` | `./scripts/dev.sh` |
 | Android dev | `.\scripts\dev.ps1 android` | `./scripts/dev.sh android` |
-| iOS dev | — (Apple-only) | `./scripts/dev-mac.sh ios` |
-| Build Windows installers | `.\scripts\build-windows.ps1` | `./scripts/build-windows.sh`¹ |
-| Build Linux (Docker) | `.\scripts\build-linux.ps1` | `./scripts/build-linux.sh` |
-| Build Android (Docker) | `.\scripts\build-android.ps1` | `./scripts/build-android.sh` |
-| Build macOS / iOS | — (Apple-only) | `./scripts/build-mac.sh` / `build-mac.sh ios` |
-| Build web single-file | `.\scripts\build-web.ps1` | `./scripts/build-web.sh` |
-| Build / push Docker image | `.\scripts\build-docker.ps1` | `./scripts/build-docker.sh` |
+| iOS dev | — (Apple-only) | `./scripts/tasks/dev-mac.sh ios` |
+| Build Windows installers | `.\scripts\tasks\build-windows.ps1` | `./scripts/tasks/build-windows.sh`¹ |
+| Build Linux (Docker) | `.\scripts\tasks\build-linux.ps1` | `./scripts/tasks/build-linux.sh` |
+| Build Android (Docker) | `.\scripts\tasks\build-android.ps1` | `./scripts/tasks/build-android.sh` |
+| Build macOS / iOS | — (Apple-only) | `./scripts/tasks/build-mac.sh` / `build-mac.sh ios` |
+| Build web single-file | `.\scripts\tasks\build-web.ps1` | `./scripts/tasks/build-web.sh` |
+| Build / push Docker image | `.\scripts\tasks\build-docker.ps1` | `./scripts/tasks/build-docker.sh` |
 | Unified dispatcher | `.\scripts\build.ps1 <target>` | `./scripts/build.sh <target>` |
-| Generate icons | `.\scripts\gen-icons.ps1` | `./scripts/gen-icons.sh` |
-| Local CI (pre-push check) | `.\scripts\ci-local.ps1` | `./scripts/ci-local.sh` |
+| Generate icons | `.\scripts\tasks\gen-icons.ps1` | `./scripts/tasks/gen-icons.sh` |
+| Local CI (pre-push check) | `.\scripts\tasks\ci-local.ps1` | `./scripts/tasks/ci-local.sh` |
 
 > ¹ Windows installers can only be produced on a Windows host; `build-windows.sh` is for Git Bash / MSYS2 users.
 > macOS / iOS can only be built on a real Mac (Apple EULA), so there's no `.ps1` counterpart.
@@ -194,7 +194,7 @@ You can also use the pnpm scripts (see `package.json`): `pnpm dev:desktop`, `pnp
 Run the **exact same** checks as GitHub Actions, inside Docker:
 
 ```powershell
-.\scripts\ci-local.ps1        # macOS/Linux: ./scripts/ci-local.sh
+.\scripts\tasks\ci-local.ps1        # macOS/Linux: ./scripts/tasks/ci-local.sh
 ```
 
 Mirrors [`.github/workflows/ci.yml`](.github/workflows/ci.yml):
