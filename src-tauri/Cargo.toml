@@ -60,7 +60,7 @@ tokio = { version = "1", features = [
 # `keyring` crate maps to Win Credential Manager / macOS Keychain / libsecret.
 [target."cfg(not(any(target_os = \"android\", target_os = \"ios\")))".dependencies]
 tauri-plugin-updater = "2"
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+keyring = { version = "4", features = ["apple-native", "windows-native", "sync-secret-service"] }
 
 [features]
 default = ["custom-protocol"]
