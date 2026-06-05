@@ -42,7 +42,7 @@
   "plugins": {
     "updater": {
       "active": true,
-      "pubkey": "REPLACE_VIA_scripts_setup-updater",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI0N0E5MEY5NzBDNjM2NUMKUldSY05zWncrWkI2dEZnNVg2UEE4bVNWQVo0alA0QmFia3hyVlZFU0wrTUZPWXNhM2MwZTFnaEoK",
       "endpoints": [
         "https://github.com/zuoliangyu/Taffy-Studio/releases/latest/download/latest.json"
       ]
