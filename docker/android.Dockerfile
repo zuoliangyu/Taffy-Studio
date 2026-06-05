@@ -18,6 +18,11 @@ ARG ANDROID_API=34
 ARG ANDROID_BUILD_TOOLS=34.0.0
 ARG NDK_VERSION=27.0.12077973
 ARG CMDLINE_TOOLS_VERSION=11076708
+# Android SDK download mirror. Default = Tencent mirror: in mainland China it
+# serves the NDK at ~9 MB/s vs dl.google.com's ~70 KB/s (≈130× faster).
+# Override for international builds:
+#   --build-arg ANDROID_MIRROR=https://dl.google.com/android/repository
+ARG ANDROID_MIRROR=https://mirrors.cloud.tencent.com/AndroidSDK
 
 ENV DEBIAN_FRONTEND=noninteractive \
     LANG=C.UTF-8 \
@@ -60,19 +65,28 @@ RUN rustup target add \
 # --- Android cmdline-tools + SDK + NDK ---
 RUN mkdir -p ${ANDROID_HOME}/cmdline-tools \
  && cd /tmp \
- && wget -q "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" -O cmdline-tools.zip \
+ && wget -q "${ANDROID_MIRROR}/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip" -O cmdline-tools.zip \
  && unzip -q cmdline-tools.zip -d ${ANDROID_HOME}/cmdline-tools \
  && mv ${ANDROID_HOME}/cmdline-tools/cmdline-tools ${ANDROID_HOME}/cmdline-tools/latest \
  && rm cmdline-tools.zip
 
 ENV PATH=${PATH}:${ANDROID_HOME}/cmdline-tools/latest/bin:${ANDROID_HOME}/platform-tools
 
+# Small components via sdkmanager (~125 MB total, still from Google).
 RUN yes | sdkmanager --licenses > /dev/null \
  && sdkmanager \
     "platform-tools" \
     "platforms;android-${ANDROID_API}" \
-    "build-tools;${ANDROID_BUILD_TOOLS}" \
-    "ndk;${NDK_VERSION}"
+    "build-tools;${ANDROID_BUILD_TOOLS}"
+
+# The NDK (~630 MB) is the bottleneck — pull it from the mirror and unpack it into
+# the same layout sdkmanager would have produced. android-ndk-r27-linux.zip is the
+# exact artifact behind "ndk;27.0.12077973"; it unzips to android-ndk-r27/.
+RUN wget -q "${ANDROID_MIRROR}/android-ndk-r27-linux.zip" -O /tmp/ndk.zip \
+ && unzip -q /tmp/ndk.zip -d /tmp/ndk \
+ && mkdir -p "${ANDROID_HOME}/ndk" \
+ && mv /tmp/ndk/android-ndk-r27 "${ANDROID_HOME}/ndk/${NDK_VERSION}" \
+ && rm -rf /tmp/ndk.zip /tmp/ndk
 
 ENV NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}
 
