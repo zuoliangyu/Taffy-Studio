@@ -231,6 +231,11 @@ jobs:
           file: docker/android.Dockerfile
           load: true
           tags: taffy-studio-android:ci
+          # CI runs outside mainland China — pull the SDK/NDK from Google directly
+          # (fast from GitHub's runners). The Dockerfile default is the Tencent
+          # mirror, which is for local builds in CN.
+          build-args: |
+            ANDROID_MIRROR=https://dl.google.com/android/repository
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
