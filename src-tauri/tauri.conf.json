@@ -43,7 +43,7 @@
   "plugins": {
     "updater": {
       "active": true,
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI0N0E5MEY5NzBDNjM2NUMKUldSY05zWncrWkI2dEZnNVg2UEE4bVNWQVo0alA0QmFia3hyVlZFU0wrTUZPWXNhM2MwZTFnaEoK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDIyQzBDNUU3QTE5NzEwNzMKUldSekVKZWg1OFhBSWc1ZmFYdlhjOE96Z1lUenpVRmVJYVpHbzZVQWNYaFU5clo0dFpUTkl2cGwK",
       "endpoints": [
         "https://github.com/zuoliangyu/Taffy-Studio/releases/latest/download/latest.json"
       ]
