@@ -1,6 +1,6 @@
 [package]
 name = "taffy-studio"
-version = "0.0.1"
+version = "0.0.2"
 description = "Taffy Studio — cross-platform AI workstation"
 authors = ["you"]
 edition = "2021"

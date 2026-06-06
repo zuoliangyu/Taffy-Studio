@@ -4,7 +4,7 @@
 # (`npm run build` / `vite build`) so `rust-embed` has a `dist/` to embed.
 [package]
 name = "taffy-web"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2021"
 rust-version = "1.77"
 

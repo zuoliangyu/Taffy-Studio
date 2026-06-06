@@ -17,6 +17,7 @@ import {
   type KnowledgeBase,
 } from '../lib/rag'
 import type { AppSettings } from '../lib/settings'
+import { Icon } from './Icon'
 
 export function KnowledgePanel({ settings }: { settings: AppSettings }) {
   const { t } = useI18n()
@@ -178,7 +179,7 @@ function KbEditor({
             onDeleted()
           }}
         >
-          🗑
+          <Icon name="trash" size={15} />
         </button>
       </div>
 
@@ -281,7 +282,7 @@ function KbEditor({
                   await onChanged()
                 }}
               >
-                ✕
+                <Icon name="x" size={14} />
               </button>
             </li>
           ))}

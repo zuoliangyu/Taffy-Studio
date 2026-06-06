@@ -6,7 +6,7 @@
 
 **One codebase, seven targets — an LLM workstation built on Tauri 2 + React + a shared Rust core.**
 
-OpenAI / Anthropic / Gemini native protocols · streaming · MCP tools + skills · knowledge base (RAG) · OS keyring · glassmorphism UI
+OpenAI / Anthropic / Gemini native protocols · streaming · multi-model compare · MCP tools + skills · knowledge base (RAG) · OS keyring · mobile-first Material You UI
 Windows · macOS · Linux · iOS · Android · single-file web binary · Docker
 
 [![CI](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml)
@@ -51,13 +51,14 @@ Grab a build per platform from the [Releases page](https://github.com/zuoliangyu
 - 🌐 **One codebase, seven deliverables** — Windows / macOS / Linux / iOS / Android native targets (Tauri 2), plus a **single-file web binary** for self-hosting and a **Docker** image.
 - 🤖 **Multi-provider, native protocols** — OpenAI-compatible (OpenAI / DeepSeek / SiliconFlow / Ollama / any base URL), **Anthropic** `/v1/messages`, **Gemini** `streamGenerateContent`. Model lists fetched per provider.
 - 🚀 **Streaming-first** — token-by-token (desktop via `tauri::ipc::Channel`, web via SSE), with stop / regenerate built in.
+- ⚖️ **Multi-model compare** — fan one message out to several models (header “Compare” multi-select or `@model`); replies render in **side-by-side columns** with per-column and batch retry; each reply shows token usage + timing (toggleable).
 - 🧩 **MCP tools + market** — connect MCP servers (local stdio + remote Streamable HTTP), with a built-in agentic tool-call loop (OpenAI & Anthropic) and a one-click **MCP market**.
 - 🛠 **Skills** — reusable prompt/capability packs in `SKILL.md` form, with import and per-conversation enablement.
 - 📚 **Knowledge base / RAG** — a local vector store (cosine retrieval) injected per conversation.
 - 📎 **Attachments & OCR** — images (vision models), PDFs / text documents (text extracted client-side into the prompt); Tesseract.js OCR fallback for non-vision models.
 - 📝 **Rich rendering** — GitHub-flavored Markdown, code highlighting (with copy), KaTeX math, Mermaid diagrams (lazy-loaded).
 - 🔐 **Secret safety** — API keys in the **OS keyring** (Windows Credential Manager / macOS Keychain / Linux libsecret); the server build injects keys from env vars and the browser never touches them.
-- 🎨 **Glassmorphism UI** — HSL token system, blue-grey glass, system/light/dark themes, sidebar collapses to a drawer below 760px, mobile safe-area aware.
+- 🎨 **Mobile-first Material You UI** — a unified line-icon set, circular send button, per-message action bar, branded empty states; system/light/dark themes; the sidebar collapses to a drawer below 760px, Settings becomes a full-screen sheet with pill tabs, narrow-screen (320px) aware and respects safe areas.
 - 🌍 **i18n** — English + Simplified Chinese, auto-detected from the system locale and switchable.
 
 ## 📸 Screenshots

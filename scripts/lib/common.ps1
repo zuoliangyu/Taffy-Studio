@@ -170,3 +170,34 @@ function Invoke-Pnpm {
         Pop-Location
     }
 }
+
+# Sync the Android launcher icons into the generated Gradle project.
+#
+# `tauri android init` copies icons into gen/android only on first init; it
+# never refreshes them afterwards. So when the source logo changes (or the gen
+# project was created before the logo was set) the phone keeps showing the
+# stale/default Tauri icon. This idempotent copy keeps the launcher icon in
+# sync with src-tauri/icons/android on every dev/build run.
+function Sync-AndroidLauncherIcons {
+    param([string]$Root)
+    $src = Join-Path $Root 'src-tauri\icons\android'
+    $dst = Join-Path $Root 'src-tauri\gen\android\app\src\main\res'
+    if (-not (Test-Path $src)) { return }          # no source icons — nothing to do
+    if (-not (Test-Path $dst)) { return }          # gen/android not initialized yet
+    Write-Step "Syncing Android launcher icons into gen/android"
+    # Merge each mipmap-* folder's CONTENTS into the matching res/mipmap-* dir
+    # (copying the folder itself risks nesting res/mipmap-hdpi/mipmap-hdpi).
+    Get-ChildItem -Path $src -Directory -Filter 'mipmap-*' | ForEach-Object {
+        $target = Join-Path $dst $_.Name
+        New-Item -ItemType Directory -Force -Path $target | Out-Null
+        Copy-Item -Path (Join-Path $_.FullName '*') -Destination $target -Recurse -Force
+    }
+    # Adaptive-icon background colour (values/ic_launcher_background.xml).
+    $bg = Join-Path $src 'values\ic_launcher_background.xml'
+    if (Test-Path $bg) {
+        $valuesDst = Join-Path $dst 'values'
+        New-Item -ItemType Directory -Force -Path $valuesDst | Out-Null
+        Copy-Item -Path $bg -Destination $valuesDst -Force
+    }
+    Write-Ok "Launcher icons synced."
+}

@@ -322,12 +322,55 @@ jobs:
           timeout = 60
           CFG
 
-      - name: Build APK (aarch64 + x86_64)
+      - name: Build signed release APK (aarch64 + x86_64)
+        shell: bash
+        env:
+          # Optional stable signing key (base64-encoded .jks + creds) so users can
+          # update in place across releases. If unset, a throwaway key is generated
+          # and the APK still installs — but only as a fresh install.
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
         run: |
           export NDK_HOME="$ANDROID_SDK_ROOT/ndk/$NDK_VERSION"
           echo "NDK_HOME=$NDK_HOME"
           pnpm android:init || true            # scaffold src-tauri/gen/android (gitignored)
-          pnpm android:build --apk --debug --target aarch64 x86_64
+
+          # `tauri android init` writes its own default Tauri launcher icons and
+          # ignores src-tauri/icons/android — overlay our real Taffy icons so the
+          # installed app shows the right launcher mark (matches docker/android.Dockerfile).
+          res=src-tauri/gen/android/app/src/main/res
+          for d in src-tauri/icons/android/mipmap-*; do
+            n=$(basename "$d"); mkdir -p "$res/$n"; cp -f "$d"/* "$res/$n/"
+          done
+          cp -f src-tauri/icons/android/values/ic_launcher_background.xml "$res/values/" || true
+
+          # Release build (no --debug): optimised + symbol-stripped native libs via
+          # [profile.release] in Cargo.toml → ~10x smaller than the old debug APK.
+          pnpm android:build --apk --target aarch64 x86_64
+
+          # Resolve a signing key: stable key from secrets if provided, else throwaway.
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > release.jks
+            STOREPASS="$ANDROID_KEYSTORE_PASSWORD"; ALIAS="$ANDROID_KEY_ALIAS"
+            echo "Signing with the stable keystore from secrets."
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret — signing with a throwaway key. Users must reinstall (no in-place update across releases). Add the secret for a stable signature."
+            keytool -genkeypair -keystore release.jks -storepass android -keypass android \
+              -alias taffy -keyalg RSA -keysize 2048 -validity 10000 \
+              -dname "CN=Taffy Studio, O=Taffy, C=US"
+            STOREPASS=android; ALIAS=taffy
+          fi
+
+          # Tauri's release APK is unsigned; sign it (v2/v3) with apksigner so it installs.
+          BT="$ANDROID_SDK_ROOT/build-tools/34.0.0"
+          find src-tauri/gen/android -name '*-release-unsigned.apk' | while read -r apk; do
+            "$BT/zipalign" -f -p 4 "$apk" /tmp/aligned.apk
+            "$BT/apksigner" sign --ks release.jks --ks-pass "pass:$STOREPASS" --key-pass "pass:$STOREPASS" \
+              --ks-key-alias "$ALIAS" --out "${apk%-unsigned.apk}.apk" /tmp/aligned.apk
+            rm -f "$apk"
+          done
+          rm -f release.jks
 
       - name: Collect APKs
         shell: bash

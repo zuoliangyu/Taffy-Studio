@@ -73,6 +73,9 @@ switch ($Target) {
             Write-Step "Initializing Android project (one-time)"
             Invoke-Pnpm -Root $root -Args @('tauri', 'android', 'init')
         }
+        # Keep the launcher icon in sync with src-tauri/icons/android (init does
+        # not refresh icons on subsequent runs — see Sync-AndroidLauncherIcons).
+        Sync-AndroidLauncherIcons -Root $root
 
         Write-Step "Starting Android dev"
         Write-Ok "Make sure either an emulator is running or a device is attached via USB (adb devices)."

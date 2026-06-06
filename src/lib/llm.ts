@@ -65,9 +65,14 @@ export interface ToolSpec {
   inputSchema: unknown
 }
 
+export interface Usage {
+  promptTokens: number
+  completionTokens: number
+}
+
 export type StreamEvent =
   | { type: 'token'; content: string }
-  | { type: 'done'; content: string; model: string }
+  | { type: 'done'; content: string; model: string; usage?: Usage }
   | { type: 'cancelled'; content: string }
   | { type: 'error'; message: string }
   | { type: 'toolCall'; id: string; serverId: string; name: string; args: string }

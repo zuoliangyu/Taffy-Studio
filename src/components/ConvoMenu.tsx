@@ -5,6 +5,8 @@
 // a second click in-place instead of using window.confirm() — that's the
 // pattern we already use for the Storage Reset flow.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Icon } from './Icon'
+import { useI18n } from '../i18n'
 
 interface Props {
   /** Viewport coords (px) the menu should snap near. */
@@ -18,6 +20,7 @@ interface Props {
 }
 
 export function ConvoMenu({ x, y, pinned, onRename, onPin, onDelete, onClose }: Props) {
+  const { t } = useI18n()
   const ref = useRef<HTMLDivElement | null>(null)
   const [confirming, setConfirming] = useState(false)
   // We re-pin the menu inside the viewport after first paint — measuring its
@@ -68,10 +71,10 @@ export function ConvoMenu({ x, y, pinned, onRename, onPin, onDelete, onClose }: 
       {!confirming ? (
         <>
           <button type="button" role="menuitem" onClick={onRename}>
-            Rename
+            <Icon name="pencil" size={15} /> {t('menu.rename')}
           </button>
           <button type="button" role="menuitem" onClick={onPin}>
-            {pinned ? 'Unpin' : 'Pin'}
+            <Icon name="pin" size={15} filled={pinned} /> {pinned ? t('menu.unpin') : t('menu.pin')}
           </button>
           <div className="convo-menu-sep" />
           <button
@@ -80,17 +83,17 @@ export function ConvoMenu({ x, y, pinned, onRename, onPin, onDelete, onClose }: 
             className="destructive"
             onClick={() => setConfirming(true)}
           >
-            Delete…
+            <Icon name="trash" size={15} /> {t('menu.deleteEllipsis')}
           </button>
         </>
       ) : (
         <>
-          <div className="convo-menu-confirm-hint">Delete this conversation?</div>
+          <div className="convo-menu-confirm-hint">{t('menu.confirmTitle')}</div>
           <button type="button" role="menuitem" onClick={() => setConfirming(false)}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button type="button" role="menuitem" className="destructive" onClick={onDelete}>
-            Yes, delete
+            {t('menu.confirmYes')}
           </button>
         </>
       )}

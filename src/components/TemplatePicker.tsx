@@ -4,6 +4,7 @@
 // which calls db.createConversation(title, init) with them.
 import { useEffect, useRef } from 'react'
 import type { AssistantTemplate } from '../lib/templates'
+import { Icon } from './Icon'
 
 interface Props {
   templates: AssistantTemplate[]
@@ -80,7 +81,7 @@ export function TemplatePicker({
         className="template-row template-row-manage"
         onClick={onManage}
       >
-        <span className="template-name">⚙ Manage templates…</span>
+        <span className="template-name"><Icon name="sliders" size={15} /> Manage templates…</span>
       </button>
     </div>
   )

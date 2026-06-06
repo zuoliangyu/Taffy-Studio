@@ -51,6 +51,10 @@ export interface AppSettings {
    *  the default presets when the field is missing entirely (vs. empty,
    *  which means "user deleted them all and wants none"). */
   templates?: AssistantTemplate[]
+  /** Show per-reply token usage + generation time as the bubble label. When
+   *  off, single-model replies show the plain role label and surface the
+   *  usage/timing on hover instead. Default on. */
+  showReplyMeta?: boolean
 }
 
 const STORE_KEY = 'settingsV2'
@@ -76,6 +80,7 @@ export function defaultSettings(): AppSettings {
     defaultProviderId: p.id,
     temperature: 0.7,
     templates: defaultTemplates(),
+    showReplyMeta: true,
   }
 }
 

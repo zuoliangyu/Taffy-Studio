@@ -13,6 +13,7 @@ import type {
   ImportSummary,
   Message,
   MessageAttachment,
+  MessageMeta,
   SearchHitRaw,
 } from '../lib/db'
 import type {
@@ -319,8 +320,10 @@ export function appendMessage(
   role: Message['role'],
   content: string,
   attachments?: MessageAttachment[],
+  model?: string,
+  meta?: MessageMeta,
 ): Promise<Message> {
-  return invoke<Message>('msg_append', { conversationId, role, content, attachments })
+  return invoke<Message>('msg_append', { conversationId, role, content, attachments, model, meta })
 }
 
 export function listMessages(conversationId: string): Promise<Message[]> {

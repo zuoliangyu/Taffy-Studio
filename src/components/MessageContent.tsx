@@ -13,6 +13,7 @@ import {
 } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import 'katex/dist/katex.min.css'
 import { autoCloseMarkdown } from '../lib/autoClose'
+import { Icon } from './Icon'
 
 interface Props {
   content: string
@@ -112,7 +113,8 @@ function CodeBlock({ lang, text }: { lang: string; text: string }) {
       <div className="md-code-bar">
         <span className="md-code-lang">{lang}</span>
         <button type="button" className="md-code-copy" onClick={onCopy}>
-          {copied ? '✓ copied' : 'copy'}
+          <Icon name={copied ? 'check' : 'copy'} size={13} />
+          {copied ? 'copied' : 'copy'}
         </button>
       </div>
       <SyntaxHighlighter

@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { deleteSkill, importSkillFile, listSkills, type SkillMeta } from '../lib/skills'
+import { Icon } from './Icon'
 
 export function SkillsPanel() {
   const { t } = useI18n()
@@ -70,7 +71,7 @@ export function SkillsPanel() {
                 title={t('common.delete')}
                 aria-label={t('common.delete')}
               >
-                🗑
+                <Icon name="trash" size={15} />
               </button>
             </div>
           ))}

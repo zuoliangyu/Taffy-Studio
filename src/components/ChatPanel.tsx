@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   appendMessage,
   deleteMessage,
@@ -11,7 +11,7 @@ import {
   type Message as DbMessage,
 } from '../lib/db'
 import { getModelCapabilities } from '../lib/capabilities'
-import { chatStream, type Attachment, type ChatMessage, type StreamHandle } from '../lib/llm'
+import { chatStream, type Attachment, type ChatMessage, type StreamHandle, type Usage } from '../lib/llm'
 import { fileToAttachment } from '../lib/attachments'
 import { attachmentTextBlock } from '../lib/doctext'
 import { ocrImage } from '../lib/ocr'
@@ -30,6 +30,8 @@ import { isDefaultTitle, summarizeAndSave } from '../lib/summarize'
 import { AttachmentChips } from './AttachmentChips'
 import { MessageContent } from './MessageContent'
 import { ModelList, ModelPicker, type ModelListHandle } from './ModelPicker'
+import { Icon } from './Icon'
+import logoUrl from '../assets/logo.png'
 
 /** Fold any extracted document / OCR text from attachments into the message
  *  content so providers that can't ingest the raw file still see it. */
@@ -47,6 +49,45 @@ interface ToolActivity {
   name: string
   args: string
   result?: string
+}
+
+/** A provider+model pair used to target a request. */
+interface ModelRef {
+  providerId: string
+  model: string
+}
+
+/** A live per-model draft column during a multi-model fan-out. */
+interface MultiSlot extends ModelRef {
+  text: string
+  error?: string
+  /** True once this model's stream has finished (stops the blinking cursor). */
+  done?: boolean
+  /** Wall-clock generation time in ms, set when the stream finishes. */
+  elapsedMs?: number
+  /** Token usage reported by the provider, if any. */
+  usage?: Usage
+}
+
+/** Format a " · 1.2s · 345 tok" suffix from generation time + token usage. */
+function metaSuffix(elapsedMs?: number, usage?: Usage): string {
+  const parts: string[] = []
+  if (elapsedMs !== undefined) parts.push(`${(elapsedMs / 1000).toFixed(1)}s`)
+  if (usage && (usage.promptTokens || usage.completionTokens)) {
+    parts.push(`${usage.promptTokens}+${usage.completionTokens} tok`)
+  }
+  return parts.length ? ` · ${parts.join(' · ')}` : ''
+}
+
+/** Dedupe a list of model refs by providerId+model, preserving order. */
+function dedupeRefs(refs: ModelRef[]): ModelRef[] {
+  const seen = new Set<string>()
+  return refs.filter((r) => {
+    const k = `${r.providerId}::${r.model}`
+    if (seen.has(k)) return false
+    seen.add(k)
+    return true
+  })
 }
 
 interface Props {
@@ -95,6 +136,13 @@ export function ChatPanel({
   // The assistant message we're currently filling token-by-token.
   // Kept out of `messages` until it's committed to the DB.
   const [draft, setDraft] = useState('')
+  // --- multi-model fan-out (Cherry-style) ---
+  // Extra models the next send fans out to (beyond the conversation's primary).
+  const [compareModels, setCompareModels] = useState<ModelRef[]>([])
+  // In-flight per-model drafts, rendered as side-by-side columns while streaming.
+  const [multiDrafts, setMultiDrafts] = useState<MultiSlot[]>([])
+  // Handles for every concurrent stream, so Stop cancels them all.
+  const streamRefsRef = useRef<StreamHandle[]>([])
   const [error, setError] = useState<string | null>(null)
   // Attachments staged on the composer, sent with the next message.
   const [pending, setPending] = useState<Attachment[]>([])
@@ -156,6 +204,9 @@ export function ChatPanel({
   }
 
   useEffect(() => {
+    // Reset the per-turn comparison fan-out when switching conversations.
+    setCompareModels([])
+    setMultiDrafts([])
     if (!conversationId) {
       setMessages([])
       return
@@ -256,6 +307,8 @@ export function ChatPanel({
       setToolActivity([])
       let acc = ''
       let cancelled = false
+      let usage: Usage | undefined
+      const startedAt = Date.now()
 
       // Fold any document / OCR text from attachments into message content so
       // non-vision / non-file-upload providers still see it.
@@ -322,6 +375,7 @@ export function ChatPanel({
               setDraft(acc)
             } else if (e.type === 'done') {
               acc = e.content || acc
+              usage = e.usage
             } else if (e.type === 'cancelled') {
               cancelled = true
               acc = e.content || acc
@@ -350,15 +404,23 @@ export function ChatPanel({
       }
 
       if (acc) {
+        const meta = { usage, elapsedMs: Date.now() - startedAt }
         let saved: DbMessage
         try {
-          saved = await appendMessage(conversationId, 'assistant', acc)
+          saved = await appendMessage(
+            conversationId,
+            'assistant',
+            acc,
+            undefined,
+            target.model,
+            meta,
+          )
         } catch (e) {
           console.error('failed to persist assistant message:', e)
           setError(`Could not save assistant reply: ${e}`)
           return null
         }
-        setMessages((m) => [...m, saved])
+        setMessages((m) => [...m, { ...saved, meta }])
 
         // First exchange complete? Trigger background title summarization
         // (fire-and-forget; never blocks the user). Only touch the default
@@ -399,6 +461,164 @@ export function ChatPanel({
     ],
   )
 
+  // Multi-model fan-out: stream `targets` concurrently from the SAME history,
+  // render them as live columns, then commit one assistant message per model
+  // (tagged with its model). Tools/skills are intentionally skipped here — this
+  // is a raw side-by-side comparison path.
+  const runMultiStream = useCallback(
+    async (dbHistory: DbMessage[], targets: ModelRef[]) => {
+      if (!conversationId) return
+      const fresh = await loadSettings()
+      setSettings(fresh)
+
+      const resolved = await Promise.all(
+        targets.map(async (ref) => {
+          const target = await resolveTarget(
+            fresh,
+            ref.providerId,
+            ref.model,
+            conversation?.temperature ?? undefined,
+          )
+          return target ? { ref, target } : null
+        }),
+      )
+      const ok = resolved.filter((x): x is NonNullable<typeof x> => x !== null)
+      if (ok.length === 0) {
+        setError('No provider configured. Open Settings to add one.')
+        return
+      }
+      const noKey = ok.find((x) => !x.target.apiKey)
+      if (noKey) {
+        setError(`Set an API key for ${noKey.ref.model} in Settings first.`)
+        return
+      }
+
+      setStreaming(true)
+      setError(null)
+      setToolActivity([])
+
+      // Shared leading messages: system prompt + (optional) retrieved KB block.
+      const sys = conversation?.system_prompt?.trim() ?? ''
+      const leading: ChatMessage[] = []
+      if (sys.length > 0) leading.push({ role: 'system', content: sys })
+      const kb = kbId ? kbs.find((k) => k.id === kbId) ?? null : null
+      if (kb && kb.embed_model) {
+        const lastUser = [...dbHistory].reverse().find((m) => m.role === 'user')
+        const query = lastUser?.content?.trim()
+        if (query) {
+          setRetrieving(true)
+          try {
+            const hits = await searchKnowledge(fresh, kb, query, 5)
+            const block = buildContextBlock(hits)
+            if (block) leading.push({ role: 'system', content: block })
+          } catch (e) {
+            console.warn('RAG retrieval failed:', e)
+          } finally {
+            setRetrieving(false)
+          }
+        }
+      }
+      const maxTokensOverride = conversation?.max_tokens ?? null
+
+      setMultiDrafts(ok.map(({ ref }) => ({ ...ref, text: '' })))
+      const accs = ok.map(() => '')
+      const metas: { usage?: Usage; elapsedMs?: number }[] = ok.map(() => ({}))
+      streamRefsRef.current = []
+
+      await Promise.all(
+        ok.map(({ ref, target }, i) =>
+          (async () => {
+            // Each model sees its OWN prior replies (or legacy untagged ones).
+            const perModel = dbHistory.filter(
+              (m) => m.role !== 'assistant' || !m.model || m.model === ref.model,
+            )
+            const wire = foldAttachmentText(
+              perModel.map((m) => ({
+                role: m.role,
+                content: m.content,
+                attachments: m.attachments,
+              })),
+            )
+            const wireMessages: ChatMessage[] = [...leading, ...wire]
+            let acc = ''
+            const startedAt = Date.now()
+            try {
+              const handle = chatStream(
+                {
+                  provider: target.provider,
+                  baseUrl: target.baseUrl,
+                  apiKey: target.apiKey,
+                  model: target.model,
+                  temperature: target.temperature,
+                  messages: wireMessages,
+                  ...(maxTokensOverride && maxTokensOverride > 0
+                    ? { maxTokens: maxTokensOverride }
+                    : {}),
+                },
+                (e) => {
+                  if (e.type === 'token') {
+                    acc += e.content
+                    setMultiDrafts((s) =>
+                      s.map((x, j) => (j === i ? { ...x, text: acc } : x)),
+                    )
+                  } else if (e.type === 'done' || e.type === 'cancelled') {
+                    acc = e.content || acc
+                    const ms = Date.now() - startedAt
+                    const u = e.type === 'done' ? e.usage : undefined
+                    metas[i] = { usage: u, elapsedMs: ms }
+                    setMultiDrafts((s) =>
+                      s.map((x, j) =>
+                        j === i ? { ...x, text: acc, done: true, elapsedMs: ms, usage: u } : x,
+                      ),
+                    )
+                  } else if (e.type === 'error') {
+                    setMultiDrafts((s) =>
+                      s.map((x, j) => (j === i ? { ...x, error: e.message, done: true } : x)),
+                    )
+                  }
+                },
+              )
+              streamRefsRef.current.push(handle)
+              await handle.promise
+            } catch (e) {
+              setMultiDrafts((s) =>
+                s.map((x, j) => (j === i ? { ...x, error: String(e), done: true } : x)),
+              )
+            }
+            accs[i] = acc
+          })(),
+        ),
+      )
+
+      streamRefsRef.current = []
+      setStreaming(false)
+      setMultiDrafts([])
+
+      for (let i = 0; i < ok.length; i++) {
+        const content = accs[i]
+        const entry = ok[i]
+        if (!content || !entry) continue
+        try {
+          const meta = metas[i] ?? {}
+          const saved = await appendMessage(
+            conversationId,
+            'assistant',
+            content,
+            undefined,
+            entry.ref.model,
+            meta,
+          )
+          // saved already carries meta back from the DB; keep the in-memory copy.
+          setMessages((m) => [...m, { ...saved, meta }])
+        } catch (e) {
+          console.error('failed to persist assistant message:', e)
+          setError(`Could not save assistant reply: ${e}`)
+        }
+      }
+    },
+    [conversationId, conversation, kbId, kbs],
+  )
+
   const onSend = useCallback(async () => {
     if (!conversationId || streaming) return
     const text = input.trim()
@@ -419,12 +639,34 @@ export function ChatPanel({
         atts.length > 0 ? atts : undefined,
       )
       setMessages((m) => [...m, userMsg])
-      const history: ChatMessage[] = [...messages, userMsg].map((m) => ({
-        role: m.role,
-        content: m.content,
-        attachments: m.attachments,
-      }))
-      await runStream(history)
+      const dbHistory = [...messages, userMsg]
+
+      // Determine the fan-out targets: the conversation's primary model plus any
+      // extra "compare" models. >1 distinct target → multi-model columns.
+      const primaryProvider = settings
+        ? getProvider(settings, conversation?.provider_id ?? undefined) ??
+          getProvider(settings)
+        : null
+      const primaryRef: ModelRef | null = primaryProvider
+        ? {
+            providerId: primaryProvider.id,
+            model: conversation?.model || primaryProvider.defaultModel || '',
+          }
+        : null
+      const targets = dedupeRefs(
+        primaryRef ? [primaryRef, ...compareModels] : compareModels,
+      )
+
+      if (targets.length > 1) {
+        await runMultiStream(dbHistory, targets)
+      } else {
+        const history: ChatMessage[] = dbHistory.map((m) => ({
+          role: m.role,
+          content: m.content,
+          attachments: m.attachments,
+        }))
+        await runStream(history)
+      }
     } catch (e) {
       // Most common failure modes here:
       //  1. DB insert fails because migration v2 (attachments column) hasn't
@@ -442,11 +684,55 @@ export function ChatPanel({
       setInput(inputBackup)
       setPending(atts)
     }
-  }, [conversationId, input, messages, pending, runStream, streaming])
+  }, [
+    conversationId,
+    input,
+    messages,
+    pending,
+    runStream,
+    runMultiStream,
+    compareModels,
+    settings,
+    conversation,
+    streaming,
+  ])
 
   const onStop = useCallback(async () => {
     await streamRef.current?.cancel()
+    await Promise.allSettled(streamRefsRef.current.map((h) => h.cancel()))
   }, [])
+
+  // Real edit (matches Cherry/kelivo): drop the user message AND everything
+  // after it, then load its text + attachments back into the composer so the
+  // user can amend and resend — rather than appending a duplicate.
+  const editMessageAt = useCallback(
+    async (index: number) => {
+      if (streaming) return
+      const target = messages[index]
+      if (!target || target.role !== 'user') return
+      const removed = messages.slice(index)
+      setMessages(messages.slice(0, index))
+      setInput(target.content)
+      if (target.attachments && target.attachments.length > 0) {
+        setPending(target.attachments as Attachment[])
+      }
+      for (const msg of removed) await deleteMessage(msg.id)
+      textareaRef.current?.focus()
+    },
+    [messages, streaming],
+  )
+
+  // Delete a single message (and refresh the local list).
+  const deleteMessageAt = useCallback(
+    async (index: number) => {
+      if (streaming) return
+      const target = messages[index]
+      if (!target) return
+      setMessages(messages.filter((x) => x.id !== target.id))
+      await deleteMessage(target.id)
+    },
+    [messages, streaming],
+  )
 
   const onRegenerate = useCallback(async () => {
     if (!conversationId || streaming || messages.length === 0) return
@@ -467,6 +753,40 @@ export function ChatPanel({
     if (history.length === 0) return
     await runStream(history)
   }, [conversationId, messages, runStream, streaming])
+
+  // Best-effort provider lookup for a bare model name (committed messages only
+  // store the model, not the provider) — pick the provider that has it enabled,
+  // else fall back to the conversation's primary provider.
+  const providerRefForModel = useCallback(
+    (model: string): ModelRef => {
+      const p =
+        settings?.providers.find((pr) => pr.enabledModels.includes(model)) ??
+        (settings ? getProvider(settings) : null)
+      return { providerId: p?.id ?? '', model }
+    },
+    [settings],
+  )
+
+  // Retry a multi-model group (the last fan-out). `onlyModel` retries a single
+  // column; omit it to re-run the whole batch. Drops the affected assistant
+  // messages, then re-streams from the shared history up to the user turn.
+  const retryGroup = useCallback(
+    async (start: number, end: number, onlyModel?: string) => {
+      if (streaming || !conversationId) return
+      const group = messages.slice(start, end)
+      const history = messages.slice(0, start)
+      const toDelete = onlyModel ? group.filter((m) => m.model === onlyModel) : group
+      const models = (onlyModel ? [onlyModel] : group.map((m) => m.model)).filter(
+        (m): m is string => !!m,
+      )
+      if (models.length === 0) return
+      const targets = dedupeRefs(models.map((m) => providerRefForModel(m)))
+      setMessages(messages.filter((m) => !toDelete.some((d) => d.id === m.id)))
+      for (const m of toDelete) await deleteMessage(m.id)
+      await runMultiStream(history, targets)
+    },
+    [conversationId, messages, streaming, providerRefForModel, runMultiStream],
+  )
 
   async function onPickModel(providerId: string, model: string) {
     if (!conversationId) return
@@ -495,7 +815,11 @@ export function ChatPanel({
 
   if (!conversationId) {
     return (
-      <div className="empty">
+      <div className="empty chat-hero">
+        <div className="chat-hero-mark">
+          <img src={logoUrl} alt="" />
+        </div>
+        <div className="chat-hero-title">Taffy Studio</div>
         <p>{t('chat.emptyPick')}</p>
       </div>
     )
@@ -516,8 +840,44 @@ export function ChatPanel({
   const visionWarning =
     hasPendingImage && effectiveCaps !== null && !effectiveCaps.vision
 
+  // Per-message regenerate lives in the assistant bubble's action bar. The
+  // global row only needs to cover the edge case where the conversation ends
+  // on a user turn with no assistant reply yet (e.g. a failed/cancelled send).
   const canRegenerate =
-    !streaming && messages.length > 0 && messages.some((m) => m.role === 'user')
+    !streaming &&
+    messages.length > 0 &&
+    messages[messages.length - 1]?.role === 'user'
+
+  // Whether to show "model · 1.2s · 30 tok" inline (default on). When off, the
+  // single-model role label stays "Assistant" and the meta moves to hover.
+  const showReplyMeta = settings?.showReplyMeta !== false
+
+  // Group the message list for rendering: a run of >1 consecutive assistant
+  // messages is a multi-model fan-out → render as side-by-side columns; anything
+  // else renders as a normal stacked bubble. `start` is the absolute index of
+  // the group's first message (used to address edit/delete).
+  type RenderGroup =
+    | { kind: 'single'; msg: DbMessage; index: number }
+    | { kind: 'columns'; msgs: DbMessage[]; start: number }
+  const renderGroups = useMemo<RenderGroup[]>(() => {
+    const out: RenderGroup[] = []
+    let i = 0
+    while (i < messages.length) {
+      const m = messages[i]!
+      if (m.role === 'assistant') {
+        let j = i + 1
+        while (j < messages.length && messages[j]!.role === 'assistant') j++
+        if (j - i > 1) {
+          out.push({ kind: 'columns', msgs: messages.slice(i, j), start: i })
+          i = j
+          continue
+        }
+      }
+      out.push({ kind: 'single', msg: m, index: i })
+      i++
+    }
+    return out
+  }, [messages])
 
   return (
     <div
@@ -562,25 +922,120 @@ export function ChatPanel({
             onClick={toggleTools}
             title={toolsEnabled ? t('chat.toolsOn') : t('chat.toolsOff')}
           >
-            <span className="label">🛠 {t('chat.tools')}</span>
+            <span className="label"><Icon name="wrench" size={14} /> {t('chat.tools')}</span>
             {toolsEnabled && connectedTools.length > 0 && (
               <span className="chip-count">{connectedTools.length}</span>
             )}
           </button>
           <KbChip kbs={kbs} value={kbId} onPick={pickKb} />
           <SkillsChip skills={allSkills} value={enabledSkills} onChange={pickSkills} />
+          <CompareChip settings={settings} value={compareModels} onChange={setCompareModels} />
         </div>
       )}
       <div className="messages" ref={scrollerRef}>
         {messages.length === 0 && !streaming && !retrieving && toolActivity.length === 0 && (
           <div className="empty messages-empty">
+            <div className="chat-hero-mark sm">
+              <img src={logoUrl} alt="" />
+            </div>
             <p>{t('chat.emptyConvo')}</p>
             <p className="muted-small">{t('chat.emptyConvoHint')}</p>
           </div>
         )}
-        {messages.map((m) => (
-          <Bubble key={m.id} role={m.role} content={m.content} attachments={m.attachments} />
-        ))}
+        {renderGroups.map((g) =>
+          g.kind === 'columns' ? (
+            (() => {
+              const end = g.start + g.msgs.length
+              const isLastGroup = end === messages.length
+              return (
+                <div className="msg-group" key={g.msgs[0]!.id}>
+                  <div className="msg-columns">
+                    {g.msgs.map((m, ci) => (
+                      <div className="msg-column" key={m.id}>
+                        <Bubble
+                          role={m.role}
+                          content={m.content}
+                          // Columns always show the model name; the meta suffix
+                          // is gated by the setting (with full info on hover).
+                          label={
+                            m.model
+                              ? showReplyMeta
+                                ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
+                                : m.model
+                              : undefined
+                          }
+                          labelTitle={
+                            m.model ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}` : undefined
+                          }
+                          attachments={m.attachments}
+                          onCopy={() => void navigator.clipboard?.writeText(m.content)}
+                          onRegenerate={
+                            !streaming && isLastGroup && m.model
+                              ? () => void retryGroup(g.start, end, m.model)
+                              : undefined
+                          }
+                          onDelete={
+                            !streaming ? () => void deleteMessageAt(g.start + ci) : undefined
+                          }
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  {!streaming && isLastGroup && (
+                    <div className="msg-group-foot">
+                      <button
+                        type="button"
+                        className="ghost small"
+                        onClick={() => void retryGroup(g.start, end)}
+                        title={t('chat.retryAllHint')}
+                      >
+                        <Icon name="refresh" size={14} /> {t('chat.retryAll')}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )
+            })()
+          ) : (
+            (() => {
+              const m = g.msg
+              const i = g.index
+              const isLastMessage = i === messages.length - 1
+              return (
+                <Bubble
+                  key={m.id}
+                  role={m.role}
+                  content={m.content}
+                  attachments={m.attachments}
+                  // Single replies: show model+meta inline only when enabled;
+                  // otherwise keep the plain role label and move it to hover.
+                  label={
+                    m.role === 'assistant' && m.model && showReplyMeta
+                      ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
+                      : undefined
+                  }
+                  labelTitle={
+                    m.role === 'assistant' && m.model
+                      ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
+                      : undefined
+                  }
+                  onCopy={() => void navigator.clipboard?.writeText(m.content)}
+                  onEdit={
+                    m.role === 'user' && !streaming
+                      ? () => void editMessageAt(i)
+                      : undefined
+                  }
+                  onDelete={!streaming ? () => void deleteMessageAt(i) : undefined}
+                  onRegenerate={
+                    !streaming && isLastMessage && m.role === 'assistant'
+                      ? onRegenerate
+                      : undefined
+                  }
+                />
+              )
+            })()
+          ),
+        )}
         {(retrieving || toolActivity.length > 0) && (
           <div className="agent-activity">
             {retrieving && (
@@ -592,7 +1047,7 @@ export function ChatPanel({
             {toolActivity.map((a) => (
               <div key={a.id} className={`tool-pill ${a.result !== undefined ? 'done' : 'running'}`}>
                 <span className="tool-pill-icon" aria-hidden="true">
-                  {a.result !== undefined ? '✓' : <span className="spinner" />}
+                  {a.result !== undefined ? <Icon name="check" size={13} /> : <span className="spinner" />}
                 </span>
                 <code className="tool-pill-name">{a.name}</code>
                 {a.result !== undefined && a.result.startsWith('ERROR') && (
@@ -602,12 +1057,37 @@ export function ChatPanel({
             ))}
           </div>
         )}
-        {streaming && <Bubble role="assistant" content={draft} pending />}
-        {error && <div className="error">⚠ {error}</div>}
+        {streaming && multiDrafts.length > 0 ? (
+          <div className="msg-columns">
+            {multiDrafts.map((d, i) => (
+              <div className="msg-column" key={`${d.providerId}::${d.model}::${i}`}>
+                <Bubble
+                  role="assistant"
+                  content={d.text}
+                  label={d.done && showReplyMeta ? `${d.model}${metaSuffix(d.elapsedMs, d.usage)}` : d.model}
+                  labelTitle={d.done ? `${d.model}${metaSuffix(d.elapsedMs, d.usage)}` : undefined}
+                  pending={!d.done}
+                />
+                {d.error && (
+                  <div className="error">
+                    <Icon name="alert" size={15} /> <span>{d.error}</span>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          streaming && <Bubble role="assistant" content={draft} pending />
+        )}
+        {error && (
+          <div className="error">
+            <Icon name="alert" size={15} /> <span>{error}</span>
+          </div>
+        )}
         {canRegenerate && (
           <div className="regen-row">
             <button type="button" className="ghost small" onClick={onRegenerate} title={t('chat.regenerateHint')}>
-              {t('chat.regenerate')}
+              <Icon name="refresh" size={14} /> {t('chat.regenerate')}
             </button>
           </div>
         )}
@@ -630,11 +1110,17 @@ export function ChatPanel({
               requireVision={hasPendingImage}
               forwardRef={mentionListRef}
               onPick={(pid, m) => {
-                // Apply the model + strip the "@xxx" we tracked.
+                // Strip the "@xxx" we tracked, then add this model to the
+                // comparison fan-out so the next send also goes to it (the
+                // responses render side by side).
                 const newText = eatMention()
                 setInput(newText)
                 closeMention()
-                void onPickModel(pid, m)
+                setCompareModels((prev) =>
+                  prev.some((v) => v.providerId === pid && v.model === m)
+                    ? prev
+                    : [...prev, { providerId: pid, model: m }],
+                )
                 // Restore caret to where the mention used to start.
                 setTimeout(() => {
                   const ta = textareaRef.current
@@ -650,7 +1136,7 @@ export function ChatPanel({
         )}
         {visionWarning && (
           <div className="vision-warning" role="alert">
-            <span className="vw-icon" aria-hidden="true">⚠</span>
+            <span className="vw-icon" aria-hidden="true"><Icon name="alert" size={15} /></span>
             <span className="vw-text">
               <strong>{effectiveModel || 'This model'}</strong> {t('chat.visionWarning')}
             </span>
@@ -682,7 +1168,7 @@ export function ChatPanel({
             aria-label={t('chat.attachImage')}
             disabled={streaming}
           >
-            📎
+            <Icon name="paperclip" size={20} />
           </button>
           <input
             ref={fileInputRef}
@@ -775,12 +1261,24 @@ export function ChatPanel({
             rows={2}
           />
           {streaming ? (
-            <button type="button" onClick={onStop} className="stop">
-              {t('chat.stop')}
+            <button
+              type="button"
+              onClick={onStop}
+              className="send-btn stop"
+              title={t('chat.stop')}
+              aria-label={t('chat.stop')}
+            >
+              <Icon name="stop" size={20} filled />
             </button>
           ) : (
-            <button type="submit" disabled={!input.trim() && pending.length === 0}>
-              {t('chat.send')}
+            <button
+              type="submit"
+              className="send-btn"
+              disabled={!input.trim() && pending.length === 0}
+              title={t('chat.send')}
+              aria-label={t('chat.send')}
+            >
+              <Icon name="send" size={20} />
             </button>
           )}
         </div>
@@ -794,31 +1292,145 @@ export function ChatPanel({
   )
 }
 
+// CompareChip — header multi-select that picks the extra models a send fans out
+// to (Cherry-style side-by-side comparison). Empty = single-model as usual.
+function CompareChip({
+  settings,
+  value,
+  onChange,
+}: {
+  settings: AppSettings
+  value: ModelRef[]
+  onChange: (v: ModelRef[]) => void
+}) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    if (!open) return
+    function onDoc(e: MouseEvent) {
+      if (!wrapRef.current?.contains(e.target as Node)) setOpen(false)
+    }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [open])
+
+  const all = settings.providers.flatMap((p) =>
+    p.enabledModels.map((m) => ({ providerId: p.id, model: m, providerName: p.name })),
+  )
+  const has = (providerId: string, model: string) =>
+    value.some((v) => v.providerId === providerId && v.model === model)
+  const toggle = (providerId: string, model: string) => {
+    if (has(providerId, model)) {
+      onChange(value.filter((v) => !(v.providerId === providerId && v.model === model)))
+    } else {
+      onChange([...value, { providerId, model }])
+    }
+  }
+
+  return (
+    <div className="kb-chip-wrap" ref={wrapRef}>
+      <button
+        type="button"
+        className={`model-chip ${value.length > 0 ? 'override' : ''}`}
+        onClick={() => setOpen((o) => !o)}
+        title={t('chat.compareHint')}
+      >
+        <span className="label">
+          <Icon name="layers" size={14} /> {t('chat.compare')}
+          {value.length > 0 ? ` (${value.length})` : ''}
+        </span>
+        <Icon name="chevron-down" size={13} className="caret" />
+      </button>
+      {open && (
+        <div className="kb-chip-popover">
+          {all.length === 0 && <div className="kb-chip-item">{t('chat.compareNone')}</div>}
+          {all.map((r) => (
+            <button
+              type="button"
+              key={`${r.providerId}::${r.model}`}
+              className={`kb-chip-item ${has(r.providerId, r.model) ? 'active' : ''}`}
+              onClick={() => toggle(r.providerId, r.model)}
+            >
+              {has(r.providerId, r.model) && <Icon name="check" size={14} />}
+              {r.model} <span className="muted-small">· {r.providerName}</span>
+            </button>
+          ))}
+          {value.length > 0 && (
+            <>
+              <div className="convo-menu-sep" />
+              <button
+                type="button"
+                className="kb-chip-item danger"
+                onClick={() => onChange([])}
+              >
+                <Icon name="x" size={14} /> {t('chat.compareClear')}
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function Bubble({
   role,
   content,
   attachments,
   pending,
+  label,
+  labelTitle,
+  onCopy,
+  onEdit,
+  onDelete,
+  onRegenerate,
 }: {
   role: string
   content: string
   attachments?: Attachment[]
   pending?: boolean
+  /** Overrides the role label (e.g. the model name in a comparison column). */
+  label?: string
+  /** Hover tooltip on the role label (e.g. usage/timing when not shown inline). */
+  labelTitle?: string
+  /** Copy raw message text. Omitted on the in-flight streaming draft. */
+  onCopy?: () => void
+  /** User messages only — drop this turn onward and load it back to edit. */
+  onEdit?: () => void
+  /** Delete this single message. */
+  onDelete?: () => void
+  /** Last assistant message only — re-run the turn. */
+  onRegenerate?: () => void
 }) {
   const { t } = useI18n()
   const asPlain = role === 'user'
   const [previewing, setPreviewing] = useState<Attachment | null>(null)
+  const [copied, setCopied] = useState(false)
   const roleLabel =
-    role === 'user'
+    label ??
+    (role === 'user'
       ? t('role.user')
       : role === 'system'
         ? t('role.system')
         : role === 'tool'
           ? t('role.tool')
-          : t('role.assistant')
+          : t('role.assistant'))
+
+  function handleCopy() {
+    onCopy?.()
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1400)
+  }
+
+  // The action bar is hidden on the streaming draft (no stable message yet)
+  // and on empty bubbles. Buttons render only when their handler is supplied.
+  const showActions =
+    !pending && !!content && (onCopy || onEdit || onDelete || onRegenerate)
+
   return (
     <div className={`bubble bubble-${role} ${pending ? 'pending' : ''}`}>
-      <div className="bubble-role">{roleLabel}</div>
+      <div className="bubble-role" title={labelTitle}>{roleLabel}</div>
       {attachments && attachments.length > 0 && (
         <AttachmentChips
           items={attachments}
@@ -832,6 +1444,54 @@ function Bubble({
           {content
             ? <MessageContent content={content} plain={asPlain} streaming={pending} />
             : pending && <span className="md-cursor">▍</span>}
+        </div>
+      )}
+      {showActions && (
+        <div className="bubble-actions">
+          {onCopy && (
+            <button
+              type="button"
+              className="msg-action"
+              onClick={handleCopy}
+              title={t('chat.copy')}
+              aria-label={t('chat.copy')}
+            >
+              <Icon name={copied ? 'check' : 'copy'} size={15} />
+            </button>
+          )}
+          {onRegenerate && (
+            <button
+              type="button"
+              className="msg-action"
+              onClick={onRegenerate}
+              title={t('chat.regenerate')}
+              aria-label={t('chat.regenerate')}
+            >
+              <Icon name="refresh" size={15} />
+            </button>
+          )}
+          {onEdit && (
+            <button
+              type="button"
+              className="msg-action"
+              onClick={onEdit}
+              title={t('chat.edit')}
+              aria-label={t('chat.edit')}
+            >
+              <Icon name="pencil" size={15} />
+            </button>
+          )}
+          {onDelete && (
+            <button
+              type="button"
+              className="msg-action danger"
+              onClick={onDelete}
+              title={t('chat.deleteMsg')}
+              aria-label={t('chat.deleteMsg')}
+            >
+              <Icon name="trash" size={15} />
+            </button>
+          )}
         </div>
       )}
       {previewing && (
@@ -886,7 +1546,7 @@ function TemperatureChip({
         }
       >
         <span className="label">T {effective.toFixed(1)}</span>
-        <span className="caret">▾</span>
+        <Icon name="chevron-down" size={13} className="caret" />
       </button>
       {open && (
         <div className="temp-popover">
@@ -903,16 +1563,18 @@ function TemperatureChip({
           />
           <div className="temp-popover-foot">
             <span className="muted-small">
-              {isOverride ? 'overriding default' : `default: ${fallback.toFixed(1)}`}
+              {isOverride
+                ? t('temp.overriding')
+                : t('temp.default', { value: fallback.toFixed(1) })}
             </span>
             {isOverride && (
               <button
                 type="button"
                 className="ghost small"
                 onClick={() => void onChange(null)}
-                title="Use the global default temperature"
+                title={t('temp.useDefault')}
               >
-                Reset
+                {t('common.reset')}
               </button>
             )}
           </div>
@@ -1001,21 +1663,21 @@ function OverridesChip({
           hasOverride ? t('overrides.titleActive') : t('overrides.titleNone')
         }
       >
-        <span className="label">⚙</span>
+        <span className="label"><Icon name="sliders" size={15} /></span>
         {hasOverride && <span className="override-dot" aria-hidden="true" />}
       </button>
       {open && (
         <div className="overrides-popover">
-          <div className="overrides-popover-head">Conversation overrides</div>
+          <div className="overrides-popover-head">{t('overrides.title')}</div>
 
           <label className="overrides-row">
-            <span className="overrides-label">Max output tokens</span>
+            <span className="overrides-label">{t('overrides.maxTokens')}</span>
             <span className="overrides-input-wrap">
               <input
                 type="number"
                 min={1}
                 step={1}
-                placeholder="default"
+                placeholder={t('overrides.maxTokensPlaceholder')}
                 value={mtDraft}
                 onChange={(e) => setMtDraft(e.target.value)}
                 onBlur={commitMaxTokens}
@@ -1036,19 +1698,19 @@ function OverridesChip({
                     setMtDraft('')
                     void onChangeMaxTokens(null)
                   }}
-                  title="Use provider default"
+                  title={t('overrides.useDefault')}
                 >
-                  Reset
+                  {t('overrides.reset')}
                 </button>
               )}
             </span>
           </label>
 
           <div className="overrides-row column">
-            <span className="overrides-label">System prompt</span>
+            <span className="overrides-label">{t('overrides.systemPrompt')}</span>
             <textarea
               className="overrides-textarea"
-              placeholder="(none — uses the model's defaults)"
+              placeholder={t('overrides.systemPromptPlaceholder')}
               value={spDraft}
               onChange={(e) => setSpDraft(e.target.value)}
               onBlur={commitSystemPrompt}
@@ -1060,9 +1722,7 @@ function OverridesChip({
               rows={4}
             />
             <div className="overrides-row-foot">
-              <span className="muted-small">
-                Prepended to every request; not stored as a message.
-              </span>
+              <span className="muted-small">{t('overrides.systemPromptHint')}</span>
               {systemPrompt && systemPrompt.length > 0 && (
                 <button
                   type="button"
@@ -1072,7 +1732,7 @@ function OverridesChip({
                     void onChangeSystemPrompt(null)
                   }}
                 >
-                  Reset
+                  {t('overrides.reset')}
                 </button>
               )}
             </div>
@@ -1122,8 +1782,8 @@ function KbChip({
         onClick={() => setOpen((o) => !o)}
         title={active ? active.name : t('chat.kbNone')}
       >
-        <span className="label">📚 {active ? active.name : t('chat.kb')}</span>
-        <span className="caret">▾</span>
+        <span className="label"><Icon name="book" size={14} /> {active ? active.name : t('chat.kb')}</span>
+        <Icon name="chevron-down" size={13} className="caret" />
       </button>
       {open && (
         <div className="kb-chip-popover">
@@ -1198,10 +1858,10 @@ function SkillsChip({
         title={active.length > 0 ? active.join(', ') : t('chat.skillsNone')}
       >
         <span className="label">
-          🧩 {t('chat.skills')}
+          <Icon name="puzzle" size={14} /> {t('chat.skills')}
           {active.length > 0 ? ` (${active.length})` : ''}
         </span>
-        <span className="caret">▾</span>
+        <Icon name="chevron-down" size={13} className="caret" />
       </button>
       {open && (
         <div className="kb-chip-popover">
@@ -1213,7 +1873,7 @@ function SkillsChip({
               onClick={() => toggle(s.name)}
               title={s.description}
             >
-              {active.includes(s.name) ? '✓ ' : ''}
+              {active.includes(s.name) && <Icon name="check" size={14} />}
               {s.name}
             </button>
           ))}

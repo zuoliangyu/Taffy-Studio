@@ -37,6 +37,8 @@ import {
 } from '../lib/settings'
 import type { AssistantTemplate } from '../lib/templates'
 import { StoragePanel } from './StoragePanel'
+import { Icon, type IconName } from './Icon'
+import logoUrl from '../assets/logo.png'
 
 interface Props {
   open: boolean
@@ -52,6 +54,7 @@ type SettingsSection =
   | 'knowledge'
   | 'templates'
   | 'storage'
+  | 'about'
 
 // Result of the "Check" button next to the API key.
 type CheckState =
@@ -79,70 +82,24 @@ const SECTIONS: { key: SettingsSection; labelKey: TKey }[] = [
   { key: 'knowledge', labelKey: 'settings.knowledge' },
   { key: 'templates', labelKey: 'settings.templates' },
   { key: 'storage', labelKey: 'settings.storage' },
+  { key: 'about', labelKey: 'settings.about' },
 ]
 
-// Lucide-style line icons for the nav rail — kept inline to avoid pulling in
-// an icon dependency for six glyphs.
+// Maps each settings section to a shared Icon glyph (single source of truth —
+// the bespoke inline SVGs were replaced by the project-wide Icon set).
+const SECTION_ICON: Record<SettingsSection, IconName> = {
+  providers: 'layers',
+  appearance: 'sun',
+  mcp: 'plug',
+  skills: 'puzzle',
+  knowledge: 'book',
+  templates: 'layout',
+  storage: 'database',
+  about: 'info',
+}
+
 function SectionIcon({ name }: { name: SettingsSection }) {
-  const common = {
-    width: 17,
-    height: 17,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 2,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-  }
-  switch (name) {
-    case 'providers':
-      return (
-        <svg {...common}>
-          <path d="M12 2 2 7l10 5 10-5-10-5Z" />
-          <path d="m2 17 10 5 10-5M2 12l10 5 10-5" />
-        </svg>
-      )
-    case 'appearance':
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" />
-        </svg>
-      )
-    case 'mcp':
-      return (
-        <svg {...common}>
-          <path d="M14 4h6v6M10 20H4v-6M20 4l-8 8M4 20l5-5" />
-        </svg>
-      )
-    case 'skills':
-      return (
-        <svg {...common}>
-          <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
-        </svg>
-      )
-    case 'knowledge':
-      return (
-        <svg {...common}>
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
-        </svg>
-      )
-    case 'templates':
-      return (
-        <svg {...common}>
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <path d="M3 9h18M9 21V9" />
-        </svg>
-      )
-    case 'storage':
-      return (
-        <svg {...common}>
-          <ellipse cx="12" cy="5" rx="9" ry="3" />
-          <path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0" />
-        </svg>
-      )
-  }
+  return <Icon name={SECTION_ICON[name]} size={17} />
 }
 
 export function SettingsPanel({ open, onClose }: Props) {
@@ -428,7 +385,7 @@ export function SettingsPanel({ open, onClose }: Props) {
             aria-label={t('common.close')}
             title={`${t('common.close')} (Esc)`}
           >
-            ✕
+            <Icon name="x" size={18} />
           </button>
         </header>
 
@@ -484,7 +441,7 @@ export function SettingsPanel({ open, onClose }: Props) {
                       title={t('settings.makeDefault')}
                       aria-label={t('settings.makeDefault')}
                     >
-                      ★
+                      <Icon name="star" size={16} filled={active.id === s.defaultProviderId} />
                     </button>
                     {s.providers.length > 1 && (
                       <button
@@ -494,7 +451,7 @@ export function SettingsPanel({ open, onClose }: Props) {
                         title={t('settings.deleteProvider')}
                         aria-label={t('settings.deleteProvider')}
                       >
-                        🗑
+                        <Icon name="trash" size={15} />
                       </button>
                     )}
                   </div>
@@ -585,7 +542,7 @@ export function SettingsPanel({ open, onClose }: Props) {
                           title={showKey ? t('settings.hideKey') : t('settings.showKey')}
                           aria-label={showKey ? t('settings.hideKey') : t('settings.showKey')}
                         >
-                          {showKey ? '🙈' : '👁'}
+                          <Icon name={showKey ? 'eye-off' : 'eye'} size={16} />
                         </button>
                         <button
                           type="button"
@@ -598,11 +555,11 @@ export function SettingsPanel({ open, onClose }: Props) {
                       </div>
                       <small className="set-hint">
                         {checkState.status === 'ok' && (
-                          <span className="set-check-ok">✓ {t('settings.checkOk')}</span>
+                          <span className="set-check-ok"><Icon name="check" size={14} /> {t('settings.checkOk')}</span>
                         )}
                         {checkState.status === 'error' && (
                           <span className="set-check-err" title={checkState.message}>
-                            ✕ {checkState.message}
+                            <Icon name="alert" size={14} /> {checkState.message}
                           </span>
                         )}
                         {checkState.status !== 'error' && (
@@ -683,6 +640,29 @@ export function SettingsPanel({ open, onClose }: Props) {
                     ))}
                   </div>
                 </div>
+                <div className="set-appearance-row">
+                  <span className="set-appearance-label">
+                    {t('settings.showReplyMeta')}
+                    <span className="set-appearance-sub">{t('settings.showReplyMetaHint')}</span>
+                  </span>
+                  <div className="seg-control">
+                    {(
+                      [
+                        [true, t('common.on')],
+                        [false, t('common.off')],
+                      ] as [boolean, string][]
+                    ).map(([v, label]) => (
+                      <button
+                        key={String(v)}
+                        type="button"
+                        className={`seg ${(s.showReplyMeta !== false) === v ? 'active' : ''}`}
+                        onClick={() => setS((cur) => (cur ? { ...cur, showReplyMeta: v } : cur))}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -699,6 +679,7 @@ export function SettingsPanel({ open, onClose }: Props) {
               />
             )}
             {section === 'storage' && <StoragePanel />}
+            {section === 'about' && <AboutSection />}
           </div>
         </div>
 
@@ -798,7 +779,7 @@ function ModelManager({
                   aria-label={visionTitle}
                   aria-pressed={caps.vision}
                 >
-                  👁
+                  <Icon name="eye" size={15} />
                 </button>
                 <button
                   type="button"
@@ -807,7 +788,7 @@ function ModelManager({
                   title={isDefault(m) ? t('settings.makeDefault') : t('settings.makeDefault')}
                   aria-label={t('settings.makeDefault')}
                 >
-                  ★
+                  <Icon name="star" size={15} filled={isDefault(m)} />
                 </button>
               </div>
             )
@@ -874,14 +855,12 @@ function TemplatesEditor({
   onDelete,
   onAdd,
 }: TEProps) {
+  const { t } = useI18n()
   return (
     <div className="templates-editor">
+      <p className="tpl-hint muted-small">{t('tpl.hint')}</p>
       {templates.length === 0 ? (
-        <p className="muted-small">
-          No templates yet. Click <strong>Add template</strong> below to create one,
-          or restart with the default presets by deleting <code>settingsV2</code>{' '}
-          from the Storage panel.
-        </p>
+        <p className="muted-small">{t('tpl.empty')}</p>
       ) : (
         templates.map((t) => (
           <TemplateCard
@@ -895,7 +874,7 @@ function TemplatesEditor({
       )}
       <div className="templates-editor-foot">
         <button type="button" className="ghost small" onClick={onAdd}>
-          + Add template
+          <Icon name="plus" size={14} /> {t('tpl.add')}
         </button>
       </div>
     </div>
@@ -910,6 +889,7 @@ interface TCProps {
 }
 
 function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
+  const { t } = useI18n()
   const provider = providers.find((p) => p.id === template.providerId)
   // Model options only make sense after a specific provider is picked;
   // "inherit" disables the model field entirely.
@@ -921,27 +901,27 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
           className="template-card-name"
           value={template.name}
           onChange={(e) => onPatch({ name: e.target.value })}
-          placeholder="Template name"
+          placeholder={t('tpl.namePlaceholder')}
         />
         <button
           type="button"
           className="icon-only destructive-btn"
           onClick={onDelete}
-          title="Delete template"
-          aria-label="Delete template"
+          title={t('tpl.deleteTemplate')}
+          aria-label={t('tpl.deleteTemplate')}
         >
-          🗑
+          <Icon name="trash" size={15} />
         </button>
       </div>
       <input
         className="template-card-desc"
         value={template.description ?? ''}
         onChange={(e) => onPatch({ description: e.target.value || undefined })}
-        placeholder="One-liner shown in the picker (optional)"
+        placeholder={t('tpl.descPlaceholder')}
       />
       <div className="template-card-row">
         <label className="template-field">
-          <span>Provider</span>
+          <span>{t('tpl.provider')}</span>
           <select
             value={template.providerId ?? ''}
             onChange={(e) => {
@@ -950,28 +930,28 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
               onPatch({ providerId: next, model: null })
             }}
           >
-            <option value="">(global default)</option>
+            <option value="">{t('tpl.globalDefault')}</option>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </label>
         <label className="template-field">
-          <span>Model</span>
+          <span>{t('tpl.model')}</span>
           <select
             value={template.model ?? ''}
             onChange={(e) => onPatch({ model: e.target.value || null })}
             disabled={!provider}
-            title={provider ? undefined : 'Pick a provider first'}
+            title={provider ? undefined : t('tpl.pickProviderFirst')}
           >
-            <option value="">{provider ? '(provider default)' : '(inherit)'}</option>
+            <option value="">{provider ? t('tpl.providerDefault') : t('tpl.inherit')}</option>
             {modelOptions.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
         </label>
         <label className="template-field template-field-num">
-          <span>Temp.</span>
+          <span>{t('tpl.temp')}</span>
           <input
             type="number"
             min="0"
@@ -983,19 +963,141 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
               const n = v === '' ? null : Number.parseFloat(v)
               onPatch({ temperature: n === null || Number.isFinite(n) ? n : null })
             }}
-            placeholder="auto"
+            placeholder={t('tpl.tempPlaceholder')}
           />
         </label>
       </div>
       <label className="template-field template-field-prompt">
-        <span>System prompt</span>
+        <span>{t('tpl.systemPrompt')}</span>
         <textarea
           rows={4}
           value={template.systemPrompt ?? ''}
           onChange={(e) => onPatch({ systemPrompt: e.target.value })}
-          placeholder="Optional. Prepended at request time to every conversation built from this template."
+          placeholder={t('tpl.systemPromptPlaceholder')}
         />
       </label>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// About — author, links, and an update check. External links + the updater are
+// Tauri-only; they degrade gracefully (no-op / window.open) on the web shell.
+// ---------------------------------------------------------------------------
+
+const REPO_URL = 'https://github.com/zuoliangyu/Taffy-Studio'
+const AUTHOR_GITHUB = 'https://github.com/zuoliangyu'
+const BILIBILI_URL = 'https://space.bilibili.com/27619688'
+
+async function openExternal(url: string) {
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell')
+    await open(url)
+  } catch {
+    try {
+      window.open(url, '_blank', 'noopener')
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+type UpdateState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'uptodate' }
+  | { kind: 'available'; version: string }
+  | { kind: 'error' }
+
+function AboutSection() {
+  const { t } = useI18n()
+  const [version, setVersion] = useState('')
+  const [upd, setUpd] = useState<UpdateState>({ kind: 'idle' })
+
+  useEffect(() => {
+    import('@tauri-apps/api/app')
+      .then((m) => m.getVersion())
+      .then(setVersion)
+      .catch(() => {})
+  }, [])
+
+  async function checkUpdate() {
+    setUpd({ kind: 'checking' })
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const update = await check()
+      setUpd(update ? { kind: 'available', version: update.version } : { kind: 'uptodate' })
+    } catch {
+      setUpd({ kind: 'error' })
+    }
+  }
+
+  return (
+    <div className="about">
+      <div className="set-card about-hero">
+        <div className="about-mark">
+          <img src={logoUrl} alt="Taffy Studio" />
+        </div>
+        <div className="about-name">Taffy Studio</div>
+        {version && (
+          <div className="muted-small">
+            {t('about.version')} {version}
+          </div>
+        )}
+        <button
+          type="button"
+          className="set-btn outline about-update"
+          onClick={checkUpdate}
+          disabled={upd.kind === 'checking'}
+        >
+          <Icon name="refresh" size={15} />{' '}
+          {upd.kind === 'checking' ? t('about.checking') : t('about.checkUpdate')}
+        </button>
+        {upd.kind === 'uptodate' && (
+          <div className="set-check-ok">
+            <Icon name="check" size={14} /> {t('about.upToDate')}
+          </div>
+        )}
+        {upd.kind === 'available' && (
+          <button type="button" className="about-link" onClick={() => openExternal(REPO_URL + '/releases/latest')}>
+            <Icon name="download" size={15} /> {t('about.updateAvailable', { v: upd.version })}
+          </button>
+        )}
+        {upd.kind === 'error' && (
+          <div className="set-check-err">
+            <Icon name="alert" size={14} /> {t('about.updateError')}
+          </div>
+        )}
+      </div>
+
+      <div className="set-card">
+        <div className="set-card-title">
+          {t('about.author')} <span className="set-line" />
+        </div>
+        <div className="about-author">左岚 · zuoliangyu</div>
+        <div className="about-links">
+          <button type="button" className="about-link" onClick={() => openExternal(BILIBILI_URL)}>
+            <Icon name="globe" size={15} /> {t('about.bilibili')}
+            <Icon name="external" size={13} className="about-ext" />
+          </button>
+          <button type="button" className="about-link" onClick={() => openExternal(AUTHOR_GITHUB)}>
+            <Icon name="github" size={15} /> {t('about.authorGithub')}
+            <Icon name="external" size={13} className="about-ext" />
+          </button>
+        </div>
+      </div>
+
+      <div className="set-card">
+        <div className="set-card-title">
+          {t('about.openSource')} <span className="set-line" />
+        </div>
+        <div className="about-links">
+          <button type="button" className="about-link" onClick={() => openExternal(REPO_URL)}>
+            <Icon name="github" size={15} /> {t('about.repo')}
+            <Icon name="external" size={13} className="about-ext" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

@@ -88,6 +88,14 @@ pub struct ChatResponse {
     pub model: String,
 }
 
+/// Token usage for a completion, when the provider reports it in the stream.
+#[derive(Clone, Copy, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Usage {
+    pub prompt_tokens: u32,
+    pub completion_tokens: u32,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum StreamEvent {
@@ -97,6 +105,8 @@ pub enum StreamEvent {
     Done {
         content: String,
         model: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        usage: Option<Usage>,
     },
     Error {
         message: String,
@@ -212,6 +222,61 @@ pub fn extract_delta(kind: &str, json: &serde_json::Value) -> Option<String> {
             .pointer("/choices/0/delta/content")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string()),
+    }
+}
+
+/// Pull token usage out of a streaming frame, when present. OpenAI reports it in
+/// a trailing frame (requires `stream_options.include_usage`); Anthropic spreads
+/// it across `message_start` (input) + `message_delta` (output); Gemini puts it
+/// in `usageMetadata`. Returns None for frames without usage.
+pub fn extract_usage(kind: &str, json: &serde_json::Value) -> Option<Usage> {
+    let as_u32 = |v: Option<&serde_json::Value>| v.and_then(|x| x.as_u64()).map(|n| n as u32);
+    match kind {
+        "anthropic" => {
+            // message_start carries input_tokens; message_delta carries output_tokens.
+            let input = as_u32(json.pointer("/message/usage/input_tokens"));
+            let output = as_u32(json.pointer("/usage/output_tokens"))
+                .or_else(|| as_u32(json.pointer("/message/usage/output_tokens")));
+            if input.is_none() && output.is_none() {
+                return None;
+            }
+            Some(Usage {
+                prompt_tokens: input.unwrap_or(0),
+                completion_tokens: output.unwrap_or(0),
+            })
+        }
+        "gemini" => {
+            let p = as_u32(json.pointer("/usageMetadata/promptTokenCount"));
+            let c = as_u32(json.pointer("/usageMetadata/candidatesTokenCount"));
+            if p.is_none() && c.is_none() {
+                return None;
+            }
+            Some(Usage {
+                prompt_tokens: p.unwrap_or(0),
+                completion_tokens: c.unwrap_or(0),
+            })
+        }
+        _ => {
+            // OpenAI-compatible: { "usage": { "prompt_tokens", "completion_tokens" } }
+            let p = as_u32(json.pointer("/usage/prompt_tokens"));
+            let c = as_u32(json.pointer("/usage/completion_tokens"));
+            if p.is_none() && c.is_none() {
+                return None;
+            }
+            Some(Usage {
+                prompt_tokens: p.unwrap_or(0),
+                completion_tokens: c.unwrap_or(0),
+            })
+        }
+    }
+}
+
+/// Merge two usage readings field-wise (largest wins) so partial frames combine.
+fn merge_usage(a: Option<Usage>, b: Usage) -> Usage {
+    let a = a.unwrap_or_default();
+    Usage {
+        prompt_tokens: a.prompt_tokens.max(b.prompt_tokens),
+        completion_tokens: a.completion_tokens.max(b.completion_tokens),
     }
 }
 
@@ -381,6 +446,10 @@ pub fn build_request(
                 "messages": messages_json,
                 "stream": stream,
             });
+            if stream {
+                // Ask OpenAI-compatible servers to emit a trailing usage frame.
+                body["stream_options"] = serde_json::json!({ "include_usage": true });
+            }
             if let Some(t) = req.temperature {
                 body["temperature"] = serde_json::json!(t);
             }
@@ -640,6 +709,9 @@ pub fn chat_stream(req: ChatRequest) -> impl Stream<Item = StreamEvent> {
         let mut stream = response.bytes_stream();
         let mut buffer = String::new();
         let mut full = String::new();
+        // Usage may arrive across multiple frames (Anthropic) or in one trailing
+        // frame (OpenAI); merge field-wise, keeping the largest value seen.
+        let mut usage: Option<Usage> = None;
 
         while let Some(chunk) = stream.next().await {
             let bytes = match chunk {
@@ -656,15 +728,18 @@ pub fn chat_stream(req: ChatRequest) -> impl Stream<Item = StreamEvent> {
                 match parse_sse_line(&line) {
                     Sse::Other => continue,
                     Sse::Done => {
-                        yield StreamEvent::Done { content: std::mem::take(&mut full), model: req.model.clone() };
+                        yield StreamEvent::Done { content: std::mem::take(&mut full), model: req.model.clone(), usage };
                         return;
                     }
                     Sse::Data(data) => {
                         let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) else {
                             continue;
                         };
+                        if let Some(u) = extract_usage(&kind, &json) {
+                            usage = Some(merge_usage(usage, u));
+                        }
                         if is_terminal(&kind, &json) {
-                            yield StreamEvent::Done { content: std::mem::take(&mut full), model: req.model.clone() };
+                            yield StreamEvent::Done { content: std::mem::take(&mut full), model: req.model.clone(), usage };
                             return;
                         }
                         if let Some(c) = extract_delta(&kind, &json) {
@@ -679,7 +754,7 @@ pub fn chat_stream(req: ChatRequest) -> impl Stream<Item = StreamEvent> {
         }
 
         // Stream closed without an explicit terminator.
-        yield StreamEvent::Done { content: full, model: req.model.clone() };
+        yield StreamEvent::Done { content: full, model: req.model.clone(), usage };
     }
 }
 
@@ -1186,6 +1261,7 @@ pub fn agentic_stream(
                     yield StreamEvent::Done {
                         content: std::mem::take(&mut full),
                         model: req.model.clone(),
+                        usage: None,
                     };
                     return;
                 }
@@ -1307,6 +1383,7 @@ pub fn agentic_stream(
                     yield StreamEvent::Done {
                         content: std::mem::take(&mut full),
                         model: req.model.clone(),
+                        usage: None,
                     };
                     return;
                 }
@@ -1357,6 +1434,7 @@ pub fn agentic_stream(
         yield StreamEvent::Done {
             content: std::mem::take(&mut full),
             model: req.model.clone(),
+            usage: None,
         };
     }
 }

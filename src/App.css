@@ -335,6 +335,11 @@ input:focus, select:focus, textarea:focus {
   letter-spacing: 0.02em;
   color: hsl(var(--primary));
   line-height: 1.2;
+  /* Truncate rather than wrap/push so the topbar actions stay on-screen on
+     narrow phones. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .brand-sub {
   font-size: 11px;
@@ -381,7 +386,7 @@ input:focus, select:focus, textarea:focus {
 
 .topbar-spacer { flex: 1; }
 
-.topbar-actions { display: flex; gap: 6px; align-items: center; }
+.topbar-actions { display: flex; gap: 6px; align-items: center; flex-shrink: 0; }
 
 /* Workspace grid below topbar */
 .workspace {
@@ -461,9 +466,20 @@ input:focus, select:focus, textarea:focus {
 }
 .new-chat-main {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
   border-top-right-radius: 0;
   border-bottom-right-radius: 0;
   border-right: 1px solid hsl(var(--border) / 0.5);
+}
+/* Full-width ghost button that pairs an icon with a label (mobile drawer foot). */
+.ghost.full.settings-full {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
 }
 .new-chat-more {
   width: 32px;
@@ -676,15 +692,21 @@ input:focus, select:focus, textarea:focus {
   backdrop-filter: blur(12px);
 }
 .convo-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
   text-align: left;
   background: transparent;
   border: none;
   color: hsl(var(--foreground));
   font-size: 12.5px;
-  padding: 6px 10px;
+  padding: 7px 10px;
   border-radius: 6px;
   cursor: pointer;
 }
+.convo-menu button .icon-svg { color: hsl(var(--muted-foreground)); flex-shrink: 0; }
+.convo-menu button.destructive .icon-svg { color: hsl(var(--destructive)); }
 .convo-menu button:hover {
   background: hsl(var(--accent) / 0.7);
 }
@@ -765,6 +787,34 @@ input:focus, select:focus, textarea:focus {
   margin: 0;
 }
 
+/* Branded empty-state: centred logo mark + wordmark (kelivo/rikkahub style). */
+.chat-hero-mark {
+  width: 72px;
+  height: 72px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #ffffff;
+  margin-bottom: 14px;
+  box-shadow:
+    0 16px 36px hsl(var(--primary) / 0.22),
+    0 0 0 1px hsl(var(--border) / 0.5);
+}
+.chat-hero-mark.sm {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  margin-bottom: 10px;
+  opacity: 0.92;
+}
+.chat-hero-mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.chat-hero-title {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: hsl(var(--primary));
+  margin-bottom: 4px;
+}
+
 /* ============================================================
    7. Chat: messages + bubbles + composer
    ============================================================ */
@@ -797,8 +847,7 @@ input:focus, select:focus, textarea:focus {
 
 .bubble-role {
   font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
   color: hsl(var(--muted-foreground));
   margin-bottom: 6px;
   font-weight: 600;
@@ -848,6 +897,9 @@ input:focus, select:focus, textarea:focus {
 
 .error {
   align-self: stretch;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   color: hsl(var(--destructive));
   font-size: 13px;
   padding: 10px 14px;
@@ -855,9 +907,9 @@ input:focus, select:focus, textarea:focus {
   border-radius: 14px;
   background: hsl(var(--destructive) / 0.08);
   backdrop-filter: blur(8px);
-  white-space: pre-wrap;
-  word-break: break-word;
 }
+.error .icon-svg { flex-shrink: 0; margin-top: 1px; }
+.error span { white-space: pre-wrap; word-break: break-word; }
 
 .regen-row {
   display: flex;
@@ -1203,13 +1255,13 @@ input:focus, select:focus, textarea:focus {
 
 .overrides-popover {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   right: 0;
   z-index: 80;
   min-width: 320px;
   max-width: 380px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  padding: 16px;
+  border-radius: 16px;
   border: 1px solid hsl(var(--border) / 0.75);
   background: linear-gradient(180deg, var(--surface-1) 0%, var(--surface-2) 100%);
   box-shadow:
@@ -1218,44 +1270,40 @@ input:focus, select:focus, textarea:focus {
   backdrop-filter: blur(14px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .overrides-popover-head {
-  font-size: 11px;
-  font-weight: 600;
-  color: hsl(var(--muted-foreground));
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 13px;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  letter-spacing: 0;
 }
-.overrides-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-}
+/* Every field stacks: label above a full-width control. */
+.overrides-row,
 .overrides-row.column {
+  display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
 }
 .overrides-label {
   font-size: 12px;
+  font-weight: 500;
   color: hsl(var(--muted-foreground));
-  flex-shrink: 0;
 }
 .overrides-input-wrap {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  flex: 1;
-  justify-content: flex-end;
+  justify-content: flex-start;
 }
 .overrides-input-wrap input[type="number"] {
-  width: 96px;
-  font-size: 12.5px;
-  padding: 5px 8px;
+  flex: 0 0 150px;
+  width: 150px;
+  font-size: 13px;
+  padding: 8px 10px;
   border: 1px solid hsl(var(--border) / 0.6);
-  border-radius: 8px;
+  border-radius: 9px;
   background: hsl(var(--background) / 0.7);
   color: hsl(var(--foreground));
   outline: none;
@@ -1896,11 +1944,23 @@ input:focus, select:focus, textarea:focus {
   gap: 14px;
 }
 .set-appearance-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 56px;
   font-size: 13px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
-  min-width: 56px;
 }
+.set-appearance-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: hsl(var(--muted-foreground) / 0.85);
+  line-height: 1.45;
+  max-width: 380px;
+}
+.set-appearance-row .seg-control { flex-shrink: 0; }
 
 /* (temperature slider moved to chat header — per-conversation) */
 
@@ -2185,7 +2245,179 @@ button.stop:hover:not(:disabled) { background: hsl(var(--destructive) / 0.92); }
   box-shadow: 0 6px 16px rgba(73, 93, 142, 0.12),
               0 0 0 3px hsl(var(--ring) / 0.18);
 }
-.composer button { height: 42px; min-width: 78px; }
+/* Circular send / stop button — Material-You style action affordance that
+   replaces the old text "Send" pill. 44px keeps it a comfortable touch target. */
+.send-btn {
+  height: 44px;
+  width: 44px;
+  min-width: 44px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.send-btn.stop {
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+  box-shadow: 0 8px 20px hsl(var(--destructive) / 0.28);
+}
+.send-btn.stop:hover:not(:disabled) { background: hsl(var(--destructive) / 0.92); }
+
+/* ============================================================
+   Icons — inline SVG (Lucide language)
+   ============================================================ */
+
+.icon-svg {
+  display: inline-block;
+  vertical-align: -0.18em;
+  flex: 0 0 auto;
+  pointer-events: none;
+}
+/* Inside flex rows (chips, buttons, action bars) icons center naturally and
+   the negative vertical-align baseline hack is unnecessary. */
+button .icon-svg,
+.model-chip .icon-svg,
+.bubble-actions .icon-svg,
+.summary-icon .icon-svg,
+.vw-icon .icon-svg { vertical-align: middle; }
+
+/* Inline spans that used to hold a single emoji glyph now hold an SVG — center
+   it so it sits on the text baseline cleanly. */
+.search-icon,
+.ml-cap-badge,
+.convo-row .pin-dot,
+.att-icon { display: inline-flex; align-items: center; justify-content: center; }
+
+/* Containers that pair an icon with a text label. */
+.md-code-copy,
+.set-check-ok,
+.set-check-err,
+.template-row-manage .template-name,
+.model-chip .label { display: inline-flex; align-items: center; gap: 5px; }
+.convo-row .pin-dot { color: hsl(var(--warning)); }
+
+/* ============================================================
+   Per-message action bar (copy / regenerate / edit)
+   ============================================================ */
+
+.bubble-actions {
+  display: flex;
+  gap: 2px;
+  margin-top: 8px;
+  /* On pointer devices the bar fades in on bubble hover to stay quiet; on
+     touch it is always shown (see the is-mobile override). */
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.bubble:hover .bubble-actions,
+.bubble:focus-within .bubble-actions { opacity: 1; }
+
+.msg-action {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  border: none;
+  box-shadow: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 120ms, color 120ms;
+}
+.msg-action:hover:not(:disabled) {
+  background: hsl(var(--muted) / 0.7);
+  color: hsl(var(--foreground));
+  transform: none;
+  box-shadow: none;
+}
+/* User bubble sits on the primary gradient — tint its actions for contrast. */
+.msg-action.danger:hover:not(:disabled) {
+  background: hsl(var(--destructive) / 0.12);
+  color: hsl(var(--destructive));
+}
+
+/* ============================================================
+   Multi-model comparison columns (Cherry-style side-by-side)
+   ============================================================ */
+
+.msg-columns {
+  align-self: stretch;
+  display: flex;
+  /* Equal-height columns so the cards line up as a tidy comparison grid
+     (tops AND bottoms aligned). */
+  align-items: stretch;
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+  scroll-snap-type: x proximity;
+  -webkit-overflow-scrolling: touch;
+}
+.msg-column {
+  /* Fixed half-width: exactly two model replies are visible at once; a 3rd+
+     model pans into view via the horizontal scrollbar below. (gap is 12px, so
+     two columns = 2*(50% - 6px) + 12px = 100%.) */
+  flex: 0 0 calc(50% - 6px);
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  scroll-snap-align: start;
+}
+/* Inside a column the assistant bubble fills the column's width AND its
+   (equal) height, with a uniform radius (no speech-bubble tail) and a soft,
+   even shadow — the default asymmetric corner + heavier drop shadow looked off
+   side-by-side. */
+.msg-column .bubble {
+  max-width: 100%;
+  align-self: stretch;
+  flex: 1;
+  border-radius: 16px;
+  box-shadow: 0 2px 10px rgba(72, 92, 140, 0.06);
+}
+/* The model name (passed as `label`) reads as a heading per column. */
+.msg-column .bubble-role {
+  color: hsl(var(--primary));
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  letter-spacing: 0;
+  text-transform: none;
+  font-size: 11px;
+}
+/* On phones, don't grow — fixed width + horizontal scroll reads better. */
+.is-mobile .msg-column { flex: 0 0 82%; min-width: 0; }
+
+/* Wrapper around a comparison group + its batch-retry footer. A soft left
+   accent + tint reads the columns as ONE turn with N answers. */
+.msg-group {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 4px 12px;
+  border-left: 2px solid hsl(var(--primary) / 0.28);
+  border-radius: 0 14px 14px 0;
+  background: hsl(var(--primary) / 0.03);
+}
+.msg-group-foot { display: flex; justify-content: center; }
+
+/* Visible, thin horizontal scrollbar so it's obvious you can pan to more
+   models when >2 are compared. */
+.msg-columns::-webkit-scrollbar { height: 8px; }
+.msg-columns::-webkit-scrollbar-track { background: transparent; }
+.msg-columns::-webkit-scrollbar-thumb {
+  background: hsl(var(--border) / 0.8);
+  border-radius: 4px;
+}
+.msg-columns::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.6); }
+.bubble-user .msg-action { color: hsl(var(--primary-foreground) / 0.8); }
+.bubble-user .msg-action:hover:not(:disabled) {
+  background: hsl(0 0% 100% / 0.18);
+  color: hsl(var(--primary-foreground));
+}
+.bubble-user .bubble-actions { justify-content: flex-end; }
 
 /* ============================================================
    9. Modal (Settings)
@@ -2550,6 +2782,124 @@ button.icon-only {
 .is-mobile .messages { padding: 16px; }
 .is-mobile .composer { padding: 12px; }
 
+/* --- Mobile: logo always front-and-centre in the top bar --- */
+.is-mobile .topbar-brand { gap: 8px; }
+.is-mobile .brand-mark {
+  display: block;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+}
+.is-mobile .brand-title { font-size: 15px; }
+/* Make the brand the flexible (shrinking) region so the title truncates and the
+   search/settings actions stay on-screen on narrow phones (≤360px). */
+.is-mobile .topbar-brand { flex: 1 1 auto; min-width: 0; overflow: hidden; }
+.is-mobile .brand-text { min-width: 0; overflow: hidden; }
+.is-mobile .topbar-spacer { display: none; }
+
+/* --- Mobile: comfortable 42px+ touch targets on every icon button --- */
+.is-mobile button.icon {
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+.is-mobile .topbar-actions { gap: 6px; }
+
+/* --- Mobile: keep the model/tools/kb chips on one scrollable row instead of
+   wrapping into a tall stack. Mirrors the kelivo/rikkahub header strip. --- */
+.is-mobile .chat-header-row {
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 10px 14px 6px;
+  -webkit-overflow-scrolling: touch;
+}
+.is-mobile .chat-header-row::-webkit-scrollbar { display: none; }
+.is-mobile .chat-header-row > * { flex-shrink: 0; }
+.is-mobile .model-chip { padding: 8px 12px; font-size: 12.5px; }
+
+/* --- Mobile: message bubbles use more width and always show their action bar
+   (no hover on touch). Bigger tap targets for the actions. --- */
+.is-mobile .bubble { max-width: 90%; }
+.is-mobile .bubble-actions { opacity: 1; gap: 4px; margin-top: 6px; }
+.is-mobile .msg-action { width: 36px; height: 36px; }
+
+/* --- Mobile: composer controls scale up for thumbs --- */
+.is-mobile .composer textarea { min-height: 46px; font-size: 16px; }
+.is-mobile button.attach-btn { width: 46px; height: 46px; }
+.is-mobile .send-btn { width: 46px; height: 46px; min-width: 46px; }
+
+/* --- Mobile: Settings / modals become full-screen sheets. The desktop modal
+   is a centred 960px card with a 188px side-rail; on a phone that leaves almost
+   no room for content, so we go edge-to-edge and turn the side-rail into a
+   horizontally-scrollable pill tab strip on top (kelivo/rikkahub pattern). --- */
+.is-mobile .modal-backdrop { padding: 0; }
+.is-mobile .settings-shell,
+.is-mobile .modal {
+  width: 100vw;
+  max-width: 100vw;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+  border: none;
+}
+.is-mobile .settings-head {
+  padding: 14px 16px;
+  padding-top: max(14px, env(safe-area-inset-top, 0));
+}
+.is-mobile .close-x { width: 40px; height: 40px; }
+
+.is-mobile .settings-main {
+  display: flex;
+  flex-direction: column;
+}
+.is-mobile .set-nav {
+  flex-direction: row;
+  gap: 6px;
+  padding: 10px 12px;
+  border-right: none;
+  border-bottom: 1px solid hsl(var(--border) / 0.45);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.is-mobile .set-nav::-webkit-scrollbar { display: none; }
+.is-mobile .set-nav-item {
+  width: auto;
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1px solid hsl(var(--border) / 0.5);
+}
+.is-mobile .set-nav-item.active { border-color: hsl(var(--primary) / 0.4); }
+
+.is-mobile .set-content {
+  padding: 16px;
+  padding-bottom: max(20px, env(safe-area-inset-bottom, 0));
+}
+.is-mobile .set-card { padding: 14px; border-radius: 14px; }
+.is-mobile .settings-foot {
+  padding: 12px 16px;
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0));
+}
+/* Comfortable tap targets for the small star/delete icon buttons. */
+.is-mobile .set-icon-btn { width: 38px; height: 38px; }
+/* Two-column field grids (e.g. name / protocol) stack on narrow phones. */
+.is-mobile .set-grid2 { grid-template-columns: 1fr; }
+/* MCP / knowledge card action icons are 24–30px on desktop — bump to a
+   comfortable touch size on mobile. */
+.is-mobile .mcp-card-actions .icon-only,
+.is-mobile .kb-editor-head .icon-only { width: 36px; height: 36px; font-size: 14px; }
+.is-mobile .kb-doc .icon-only { width: 30px; height: 30px; font-size: 13px; }
+
+/* --- Mobile: search palette uses near-full width + larger input (no iOS zoom),
+   anchored just below the safe-area top. --- */
+.is-mobile .search-backdrop { padding-top: max(8vh, env(safe-area-inset-top, 0)); }
+.is-mobile .search-palette { width: calc(100vw - 16px); max-height: 82vh; }
+.is-mobile .search-input { font-size: 16px; }
+
 /* ============================================================
    11. Markdown
    ============================================================ */
@@ -2895,6 +3245,8 @@ button.icon-only {
 }
 .kb-chip-item:hover { background: hsl(var(--accent) / 0.6); transform: none; }
 .kb-chip-item.active { background: hsl(var(--primary) / 0.14); color: hsl(var(--primary)); }
+.kb-chip-item.danger { color: hsl(var(--destructive)); }
+.kb-chip-item.danger:hover { background: hsl(var(--destructive) / 0.1); }
 
 /* ============================================================
    15. Agent activity — retrieval line + tool-call pills
@@ -3492,3 +3844,53 @@ button.icon-only {
   flex-shrink: 0;
 }
 .kb-doc .icon-only { width: 24px; height: 24px; font-size: 11px; }
+
+/* ============================================================
+   Settings → About
+   ============================================================ */
+.about { display: flex; flex-direction: column; gap: 14px; }
+.about-hero { align-items: center; text-align: center; gap: 10px; }
+.about-mark {
+  width: 76px;
+  height: 76px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 14px 32px hsl(var(--primary) / 0.22), 0 0 0 1px hsl(var(--border) / 0.5);
+}
+.about-mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.about-name { font-size: 18px; font-weight: 700; color: hsl(var(--primary)); }
+.about-update { margin-top: 4px; }
+.about-author { font-size: 14px; font-weight: 600; }
+.about-links { display: flex; flex-direction: column; gap: 8px; }
+.about-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border) / 0.55);
+  background: var(--surface-1);
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: none;
+}
+.about-link:hover:not(:disabled) {
+  background: hsl(var(--accent) / 0.5);
+  border-color: hsl(var(--primary) / 0.4);
+  transform: none;
+}
+.about-link .about-ext { color: hsl(var(--muted-foreground)); margin-left: 2px; }
+.is-mobile .about-link { align-self: stretch; }
+
+/* Info banner atop the templates editor explaining template↔conversation scope. */
+.tpl-hint {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: hsl(var(--primary) / 0.06);
+  border: 1px solid hsl(var(--primary) / 0.16);
+  line-height: 1.55;
+}

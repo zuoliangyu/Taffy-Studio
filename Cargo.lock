@@ -4728,7 +4728,7 @@ dependencies = [
 
 [[package]]
 name = "taffy-core"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "async-stream",
  "dirs",
@@ -4746,7 +4746,7 @@ dependencies = [
 
 [[package]]
 name = "taffy-studio"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "futures-util",
  "keyring",
@@ -4772,7 +4772,7 @@ dependencies = [
 
 [[package]]
 name = "taffy-web"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "axum",
  "clap",
