@@ -111,6 +111,7 @@ export function ModelList({
   onPick,
   forwardRef,
 }: ListProps) {
+  const { t } = useI18n()
   const flat: Flat[] = useMemo(() => {
     const out: Flat[] = []
     for (const p of settings.providers) {
@@ -218,8 +219,8 @@ export function ModelList({
                 title={f.enabled ? undefined : 'This model does not support image input'}
               >
                 <span className="ml-model">{f.model}</span>
-                {caps.vision && <span className="ml-cap-badge" title="Vision"><Icon name="eye" size={13} /></span>}
-                {isCurrent && <span className="ml-current-tag">current</span>}
+                {caps.vision && <span className="ml-cap-badge" title={t('model.vision')}><Icon name="eye" size={13} /></span>}
+                {isCurrent && <span className="ml-current-tag">{t('model.current')}</span>}
               </button>
             )
           })}

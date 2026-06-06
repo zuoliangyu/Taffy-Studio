@@ -640,6 +640,29 @@ export function SettingsPanel({ open, onClose }: Props) {
                     ))}
                   </div>
                 </div>
+                <div className="set-appearance-row">
+                  <span className="set-appearance-label">
+                    {t('settings.showReplyMeta')}
+                    <span className="set-appearance-sub">{t('settings.showReplyMetaHint')}</span>
+                  </span>
+                  <div className="seg-control">
+                    {(
+                      [
+                        [true, t('common.on')],
+                        [false, t('common.off')],
+                      ] as [boolean, string][]
+                    ).map(([v, label]) => (
+                      <button
+                        key={String(v)}
+                        type="button"
+                        className={`seg ${(s.showReplyMeta !== false) === v ? 'active' : ''}`}
+                        onClick={() => setS((cur) => (cur ? { ...cur, showReplyMeta: v } : cur))}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
             )}
 

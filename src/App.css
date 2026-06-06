@@ -1944,11 +1944,23 @@ input:focus, select:focus, textarea:focus {
   gap: 14px;
 }
 .set-appearance-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 56px;
   font-size: 13px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
-  min-width: 56px;
 }
+.set-appearance-sub {
+  font-size: 11px;
+  font-weight: 400;
+  color: hsl(var(--muted-foreground) / 0.85);
+  line-height: 1.45;
+  max-width: 380px;
+}
+.set-appearance-row .seg-control { flex-shrink: 0; }
 
 /* (temperature slider moved to chat header — per-conversation) */
 

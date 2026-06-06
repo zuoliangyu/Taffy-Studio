@@ -848,6 +848,10 @@ export function ChatPanel({
     messages.length > 0 &&
     messages[messages.length - 1]?.role === 'user'
 
+  // Whether to show "model · 1.2s · 30 tok" inline (default on). When off, the
+  // single-model role label stays "Assistant" and the meta moves to hover.
+  const showReplyMeta = settings?.showReplyMeta !== false
+
   // Group the message list for rendering: a run of >1 consecutive assistant
   // messages is a multi-model fan-out → render as side-by-side columns; anything
   // else renders as a normal stacked bubble. `start` is the absolute index of
@@ -951,12 +955,19 @@ export function ChatPanel({
                         <Bubble
                           role={m.role}
                           content={m.content}
-                          attachments={m.attachments}
+                          // Columns always show the model name; the meta suffix
+                          // is gated by the setting (with full info on hover).
                           label={
                             m.model
-                              ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
+                              ? showReplyMeta
+                                ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
+                                : m.model
                               : undefined
                           }
+                          labelTitle={
+                            m.model ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}` : undefined
+                          }
+                          attachments={m.attachments}
                           onCopy={() => void navigator.clipboard?.writeText(m.content)}
                           onRegenerate={
                             !streaming && isLastGroup && m.model
@@ -996,7 +1007,14 @@ export function ChatPanel({
                   role={m.role}
                   content={m.content}
                   attachments={m.attachments}
+                  // Single replies: show model+meta inline only when enabled;
+                  // otherwise keep the plain role label and move it to hover.
                   label={
+                    m.role === 'assistant' && m.model && showReplyMeta
+                      ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
+                      : undefined
+                  }
+                  labelTitle={
                     m.role === 'assistant' && m.model
                       ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
                       : undefined
@@ -1046,7 +1064,8 @@ export function ChatPanel({
                 <Bubble
                   role="assistant"
                   content={d.text}
-                  label={d.done ? `${d.model}${metaSuffix(d.elapsedMs, d.usage)}` : d.model}
+                  label={d.done && showReplyMeta ? `${d.model}${metaSuffix(d.elapsedMs, d.usage)}` : d.model}
+                  labelTitle={d.done ? `${d.model}${metaSuffix(d.elapsedMs, d.usage)}` : undefined}
                   pending={!d.done}
                 />
                 {d.error && (
@@ -1361,6 +1380,7 @@ function Bubble({
   attachments,
   pending,
   label,
+  labelTitle,
   onCopy,
   onEdit,
   onDelete,
@@ -1372,6 +1392,8 @@ function Bubble({
   pending?: boolean
   /** Overrides the role label (e.g. the model name in a comparison column). */
   label?: string
+  /** Hover tooltip on the role label (e.g. usage/timing when not shown inline). */
+  labelTitle?: string
   /** Copy raw message text. Omitted on the in-flight streaming draft. */
   onCopy?: () => void
   /** User messages only — drop this turn onward and load it back to edit. */
@@ -1408,7 +1430,7 @@ function Bubble({
 
   return (
     <div className={`bubble bubble-${role} ${pending ? 'pending' : ''}`}>
-      <div className="bubble-role">{roleLabel}</div>
+      <div className="bubble-role" title={labelTitle}>{roleLabel}</div>
       {attachments && attachments.length > 0 && (
         <AttachmentChips
           items={attachments}
@@ -1541,16 +1563,18 @@ function TemperatureChip({
           />
           <div className="temp-popover-foot">
             <span className="muted-small">
-              {isOverride ? 'overriding default' : `default: ${fallback.toFixed(1)}`}
+              {isOverride
+                ? t('temp.overriding')
+                : t('temp.default', { value: fallback.toFixed(1) })}
             </span>
             {isOverride && (
               <button
                 type="button"
                 className="ghost small"
                 onClick={() => void onChange(null)}
-                title="Use the global default temperature"
+                title={t('temp.useDefault')}
               >
-                Reset
+                {t('common.reset')}
               </button>
             )}
           </div>
