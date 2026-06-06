@@ -3873,3 +3873,12 @@ button.icon-only {
 }
 .about-link .about-ext { color: hsl(var(--muted-foreground)); margin-left: 2px; }
 .is-mobile .about-link { align-self: stretch; }
+
+/* Info banner atop the templates editor explaining template↔conversation scope. */
+.tpl-hint {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: hsl(var(--primary) / 0.06);
+  border: 1px solid hsl(var(--primary) / 0.16);
+  line-height: 1.55;
+}

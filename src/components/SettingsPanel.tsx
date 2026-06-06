@@ -835,6 +835,7 @@ function TemplatesEditor({
   const { t } = useI18n()
   return (
     <div className="templates-editor">
+      <p className="tpl-hint muted-small">{t('tpl.hint')}</p>
       {templates.length === 0 ? (
         <p className="muted-small">{t('tpl.empty')}</p>
       ) : (
