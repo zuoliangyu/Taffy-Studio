@@ -1644,16 +1644,16 @@ function OverridesChip({
       </button>
       {open && (
         <div className="overrides-popover">
-          <div className="overrides-popover-head">Conversation overrides</div>
+          <div className="overrides-popover-head">{t('overrides.title')}</div>
 
           <label className="overrides-row">
-            <span className="overrides-label">Max output tokens</span>
+            <span className="overrides-label">{t('overrides.maxTokens')}</span>
             <span className="overrides-input-wrap">
               <input
                 type="number"
                 min={1}
                 step={1}
-                placeholder="default"
+                placeholder={t('overrides.maxTokensPlaceholder')}
                 value={mtDraft}
                 onChange={(e) => setMtDraft(e.target.value)}
                 onBlur={commitMaxTokens}
@@ -1674,19 +1674,19 @@ function OverridesChip({
                     setMtDraft('')
                     void onChangeMaxTokens(null)
                   }}
-                  title="Use provider default"
+                  title={t('overrides.useDefault')}
                 >
-                  Reset
+                  {t('overrides.reset')}
                 </button>
               )}
             </span>
           </label>
 
           <div className="overrides-row column">
-            <span className="overrides-label">System prompt</span>
+            <span className="overrides-label">{t('overrides.systemPrompt')}</span>
             <textarea
               className="overrides-textarea"
-              placeholder="(none — uses the model's defaults)"
+              placeholder={t('overrides.systemPromptPlaceholder')}
               value={spDraft}
               onChange={(e) => setSpDraft(e.target.value)}
               onBlur={commitSystemPrompt}
@@ -1698,9 +1698,7 @@ function OverridesChip({
               rows={4}
             />
             <div className="overrides-row-foot">
-              <span className="muted-small">
-                Prepended to every request; not stored as a message.
-              </span>
+              <span className="muted-small">{t('overrides.systemPromptHint')}</span>
               {systemPrompt && systemPrompt.length > 0 && (
                 <button
                   type="button"
@@ -1710,7 +1708,7 @@ function OverridesChip({
                     void onChangeSystemPrompt(null)
                   }}
                 >
-                  Reset
+                  {t('overrides.reset')}
                 </button>
               )}
             </div>

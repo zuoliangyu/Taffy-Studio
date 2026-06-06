@@ -1255,13 +1255,13 @@ input:focus, select:focus, textarea:focus {
 
 .overrides-popover {
   position: absolute;
-  top: calc(100% + 4px);
+  top: calc(100% + 6px);
   right: 0;
   z-index: 80;
   min-width: 320px;
   max-width: 380px;
-  padding: 12px 14px;
-  border-radius: 14px;
+  padding: 16px;
+  border-radius: 16px;
   border: 1px solid hsl(var(--border) / 0.75);
   background: linear-gradient(180deg, var(--surface-1) 0%, var(--surface-2) 100%);
   box-shadow:
@@ -1270,44 +1270,39 @@ input:focus, select:focus, textarea:focus {
   backdrop-filter: blur(14px);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 .overrides-popover-head {
-  font-size: 11px;
-  font-weight: 600;
-  color: hsl(var(--muted-foreground));
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+  font-size: 13px;
+  font-weight: 700;
+  color: hsl(var(--foreground));
+  letter-spacing: 0;
 }
-.overrides-row {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 10px;
-}
+/* Every field stacks: label above a full-width control. */
+.overrides-row,
 .overrides-row.column {
+  display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 6px;
 }
 .overrides-label {
   font-size: 12px;
+  font-weight: 500;
   color: hsl(var(--muted-foreground));
-  flex-shrink: 0;
 }
 .overrides-input-wrap {
   display: flex;
-  gap: 6px;
+  gap: 8px;
   align-items: center;
-  flex: 1;
-  justify-content: flex-end;
 }
 .overrides-input-wrap input[type="number"] {
-  width: 96px;
-  font-size: 12.5px;
-  padding: 5px 8px;
+  flex: 1;
+  width: auto;
+  font-size: 13px;
+  padding: 8px 10px;
   border: 1px solid hsl(var(--border) / 0.6);
-  border-radius: 8px;
+  border-radius: 9px;
   background: hsl(var(--background) / 0.7);
   color: hsl(var(--foreground));
   outline: none;
