@@ -54,6 +54,7 @@ export const en = {
   'chat.compareNone': 'No other models available',
   'chat.retryAll': 'Retry all',
   'chat.retryAllHint': 'Re-run every model in this batch',
+  'chat.compareClear': 'Clear selection',
   'chat.streaming': 'Streaming…',
   'chat.attachNote': 'Add a note about these attachments…',
   'chat.placeholder':
@@ -336,6 +337,7 @@ export const zh: Record<TKey, string> = {
   'chat.compareNone': '没有其他可用模型',
   'chat.retryAll': '全部重试',
   'chat.retryAllHint': '重新运行这一批的所有模型',
+  'chat.compareClear': '清空选择',
   'chat.streaming': '生成中…',
   'chat.attachNote': '为这些附件添加说明…',
   'chat.placeholder': '输入消息（Enter 发送，Shift+Enter 换行 · @ 切换模型）',

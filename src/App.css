@@ -2380,9 +2380,29 @@ button .icon-svg,
 /* On phones, don't grow — fixed width + horizontal scroll reads better. */
 .is-mobile .msg-column { flex: 0 0 82%; min-width: 0; }
 
-/* Wrapper around a comparison group + its batch-retry footer. */
-.msg-group { align-self: stretch; display: flex; flex-direction: column; gap: 6px; }
+/* Wrapper around a comparison group + its batch-retry footer. A soft left
+   accent + tint reads the columns as ONE turn with N answers. */
+.msg-group {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 8px 4px 12px;
+  border-left: 2px solid hsl(var(--primary) / 0.28);
+  border-radius: 0 14px 14px 0;
+  background: hsl(var(--primary) / 0.03);
+}
 .msg-group-foot { display: flex; justify-content: center; }
+
+/* Visible, thin horizontal scrollbar so it's obvious you can pan to more
+   models when >2 are compared. */
+.msg-columns::-webkit-scrollbar { height: 8px; }
+.msg-columns::-webkit-scrollbar-track { background: transparent; }
+.msg-columns::-webkit-scrollbar-thumb {
+  background: hsl(var(--border) / 0.8);
+  border-radius: 4px;
+}
+.msg-columns::-webkit-scrollbar-thumb:hover { background: hsl(var(--muted-foreground) / 0.6); }
 .bubble-user .msg-action { color: hsl(var(--primary-foreground) / 0.8); }
 .bubble-user .msg-action:hover:not(:disabled) {
   background: hsl(0 0% 100% / 0.18);
@@ -3216,6 +3236,8 @@ button.icon-only {
 }
 .kb-chip-item:hover { background: hsl(var(--accent) / 0.6); transform: none; }
 .kb-chip-item.active { background: hsl(var(--primary) / 0.14); color: hsl(var(--primary)); }
+.kb-chip-item.danger { color: hsl(var(--destructive)); }
+.kb-chip-item.danger:hover { background: hsl(var(--destructive) / 0.1); }
 
 /* ============================================================
    15. Agent activity — retrieval line + tool-call pills

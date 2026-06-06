@@ -61,6 +61,10 @@ interface ModelRef {
 interface MultiSlot extends ModelRef {
   text: string
   error?: string
+  /** True once this model's stream has finished (stops the blinking cursor). */
+  done?: boolean
+  /** Wall-clock generation time in ms, set when the stream finishes. */
+  elapsedMs?: number
 }
 
 /** Dedupe a list of model refs by providerId+model, preserving order. */
@@ -513,6 +517,7 @@ export function ChatPanel({
             )
             const wireMessages: ChatMessage[] = [...leading, ...wire]
             let acc = ''
+            const startedAt = Date.now()
             try {
               const handle = chatStream(
                 {
@@ -534,9 +539,15 @@ export function ChatPanel({
                     )
                   } else if (e.type === 'done' || e.type === 'cancelled') {
                     acc = e.content || acc
+                    const ms = Date.now() - startedAt
+                    setMultiDrafts((s) =>
+                      s.map((x, j) =>
+                        j === i ? { ...x, text: acc, done: true, elapsedMs: ms } : x,
+                      ),
+                    )
                   } else if (e.type === 'error') {
                     setMultiDrafts((s) =>
-                      s.map((x, j) => (j === i ? { ...x, error: e.message } : x)),
+                      s.map((x, j) => (j === i ? { ...x, error: e.message, done: true } : x)),
                     )
                   }
                 },
@@ -545,7 +556,7 @@ export function ChatPanel({
               await handle.promise
             } catch (e) {
               setMultiDrafts((s) =>
-                s.map((x, j) => (j === i ? { ...x, error: String(e) } : x)),
+                s.map((x, j) => (j === i ? { ...x, error: String(e), done: true } : x)),
               )
             }
             accs[i] = acc
@@ -994,7 +1005,16 @@ export function ChatPanel({
           <div className="msg-columns">
             {multiDrafts.map((d, i) => (
               <div className="msg-column" key={`${d.providerId}::${d.model}::${i}`}>
-                <Bubble role="assistant" content={d.text} label={d.model} pending />
+                <Bubble
+                  role="assistant"
+                  content={d.text}
+                  label={
+                    d.done && d.elapsedMs !== undefined
+                      ? `${d.model} · ${(d.elapsedMs / 1000).toFixed(1)}s`
+                      : d.model
+                  }
+                  pending={!d.done}
+                />
                 {d.error && (
                   <div className="error">
                     <Icon name="alert" size={15} /> <span>{d.error}</span>
@@ -1283,6 +1303,18 @@ function CompareChip({
               {r.model} <span className="muted-small">· {r.providerName}</span>
             </button>
           ))}
+          {value.length > 0 && (
+            <>
+              <div className="convo-menu-sep" />
+              <button
+                type="button"
+                className="kb-chip-item danger"
+                onClick={() => onChange([])}
+              >
+                <Icon name="x" size={14} /> {t('chat.compareClear')}
+              </button>
+            </>
+          )}
         </div>
       )}
     </div>
