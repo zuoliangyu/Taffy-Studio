@@ -9,6 +9,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useI18n } from '../i18n'
 import { getModelCapabilities } from '../lib/capabilities'
 import type { AppSettings, ProviderEntry } from '../lib/settings'
+import { Icon } from './Icon'
 
 interface PickerProps {
   settings: AppSettings
@@ -44,7 +45,7 @@ export function ModelPicker({ settings, providerId, model, onPick }: PickerProps
       >
         <span className="dot" data-kind={provider?.kind ?? 'custom'} />
         <span className="label">{label}</span>
-        <span className="caret">▾</span>
+        <Icon name="chevron-down" size={13} className="caret" />
       </button>
       {open && (
         <div className="model-chip-popover">
@@ -217,7 +218,7 @@ export function ModelList({
                 title={f.enabled ? undefined : 'This model does not support image input'}
               >
                 <span className="ml-model">{f.model}</span>
-                {caps.vision && <span className="ml-cap-badge" title="Vision">👁</span>}
+                {caps.vision && <span className="ml-cap-badge" title="Vision"><Icon name="eye" size={13} /></span>}
                 {isCurrent && <span className="ml-current-tag">current</span>}
               </button>
             )

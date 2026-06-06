@@ -319,8 +319,9 @@ export function appendMessage(
   role: Message['role'],
   content: string,
   attachments?: MessageAttachment[],
+  model?: string,
 ): Promise<Message> {
-  return invoke<Message>('msg_append', { conversationId, role, content, attachments })
+  return invoke<Message>('msg_append', { conversationId, role, content, attachments, model })
 }
 
 export function listMessages(conversationId: string): Promise<Message[]> {

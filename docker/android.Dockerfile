@@ -102,9 +102,46 @@ RUN pnpm build
 # at build time so each container build is reproducible.
 RUN pnpm android:init || true
 
-# Sign-debug for sideload; release signing requires a keystore — see DOCKER.md.
-# --target limits the ABIs to the two we ship (matches the rustup targets above).
-RUN pnpm android:build --apk --debug --target aarch64 x86_64
+# `tauri android init` writes its OWN default Tauri launcher icons into
+# gen/android and ignores src-tauri/icons/android — so without this overlay the
+# installed app shows the generic orange Tauri logo instead of the Taffy mark.
+# Copy our real launcher icons (raster mipmaps + adaptive background colour) over
+# the generated ones before the APK is packaged.
+RUN set -eux; \
+    res=src-tauri/gen/android/app/src/main/res; \
+    for d in src-tauri/icons/android/mipmap-*; do \
+      n=$(basename "$d"); mkdir -p "$res/$n"; cp -f "$d"/* "$res/$n/"; \
+    done; \
+    cp -f src-tauri/icons/android/values/ic_launcher_background.xml "$res/values/" || true
+
+# Throwaway keystore for signing. These are "debug-style" creds: sideload
+# installs only require *a* signature, not a trusted one. Swap in a real
+# keystore here for Play Store distribution.
+RUN keytool -genkeypair \
+      -keystore /app/src-tauri/gen/android/release.jks \
+      -storepass android -keypass android -alias taffy \
+      -keyalg RSA -keysize 2048 -validity 10000 \
+      -dname "CN=Taffy Studio, O=Taffy, C=US"
+
+# Release build (no --debug): optimised + symbol-stripped native libs → roughly
+# an order of magnitude smaller than the old --debug build. --target limits the
+# ABIs to the two we ship.
+RUN pnpm android:build --apk --target aarch64 x86_64
+
+# Tauri's release APK comes out UNSIGNED (it does not auto-read keystore.properties
+# in this CLI version), so sign it explicitly with apksigner — the deterministic,
+# template-independent path. zipalign first, then a v2/v3 signature so it installs
+# on Android 11+. The signed APK lands next to the unsigned one for the export stage.
+RUN set -eux; \
+    BT="$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)"; \
+    find src-tauri/gen/android -name '*-release-unsigned.apk' | while read -r apk; do \
+      signed="${apk%-unsigned.apk}.apk"; \
+      "${BT}zipalign" -f -p 4 "$apk" "/tmp/aligned.apk"; \
+      "${BT}apksigner" sign --ks /app/src-tauri/gen/android/release.jks \
+        --ks-pass pass:android --key-pass pass:android \
+        --out "$signed" "/tmp/aligned.apk"; \
+      rm -f "$apk"; \
+    done
 
 FROM ubuntu:22.04 AS export
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates rsync && rm -rf /var/lib/apt/lists/*

@@ -9,6 +9,7 @@
 // the cascade entirely.
 import { attachmentToDataUrl, formatBytes } from '../lib/attachments'
 import type { Attachment } from '../lib/llm'
+import { Icon } from './Icon'
 
 interface Props {
   items: Attachment[]
@@ -54,7 +55,7 @@ function RemoveControl({ onClick }: { onClick: () => void }) {
         }
       }}
     >
-      ×
+      <Icon name="x" size={13} strokeWidth={2.5} />
     </span>
   )
 }
@@ -92,7 +93,7 @@ function Chip({
       className={`att-chip att-file att-${variant}`}
       title={`${a.name} · ${formatBytes(a.size)} · file attachments are not yet sent to the model`}
     >
-      <span className="att-icon">📄</span>
+      <span className="att-icon"><Icon name="file" size={18} /></span>
       <span className="att-info">
         <span className="att-name">{a.name}</span>
         <span className="att-meta">{formatBytes(a.size)} · skipped on send</span>

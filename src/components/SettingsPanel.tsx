@@ -37,6 +37,7 @@ import {
 } from '../lib/settings'
 import type { AssistantTemplate } from '../lib/templates'
 import { StoragePanel } from './StoragePanel'
+import { Icon, type IconName } from './Icon'
 
 interface Props {
   open: boolean
@@ -81,68 +82,20 @@ const SECTIONS: { key: SettingsSection; labelKey: TKey }[] = [
   { key: 'storage', labelKey: 'settings.storage' },
 ]
 
-// Lucide-style line icons for the nav rail — kept inline to avoid pulling in
-// an icon dependency for six glyphs.
+// Maps each settings section to a shared Icon glyph (single source of truth —
+// the bespoke inline SVGs were replaced by the project-wide Icon set).
+const SECTION_ICON: Record<SettingsSection, IconName> = {
+  providers: 'layers',
+  appearance: 'sun',
+  mcp: 'plug',
+  skills: 'puzzle',
+  knowledge: 'book',
+  templates: 'layout',
+  storage: 'database',
+}
+
 function SectionIcon({ name }: { name: SettingsSection }) {
-  const common = {
-    width: 17,
-    height: 17,
-    viewBox: '0 0 24 24',
-    fill: 'none',
-    stroke: 'currentColor',
-    strokeWidth: 2,
-    strokeLinecap: 'round' as const,
-    strokeLinejoin: 'round' as const,
-  }
-  switch (name) {
-    case 'providers':
-      return (
-        <svg {...common}>
-          <path d="M12 2 2 7l10 5 10-5-10-5Z" />
-          <path d="m2 17 10 5 10-5M2 12l10 5 10-5" />
-        </svg>
-      )
-    case 'appearance':
-      return (
-        <svg {...common}>
-          <circle cx="12" cy="12" r="4" />
-          <path d="M12 2v2M12 20v2M2 12h2M20 12h2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" />
-        </svg>
-      )
-    case 'mcp':
-      return (
-        <svg {...common}>
-          <path d="M14 4h6v6M10 20H4v-6M20 4l-8 8M4 20l5-5" />
-        </svg>
-      )
-    case 'skills':
-      return (
-        <svg {...common}>
-          <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z" />
-        </svg>
-      )
-    case 'knowledge':
-      return (
-        <svg {...common}>
-          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
-        </svg>
-      )
-    case 'templates':
-      return (
-        <svg {...common}>
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          <path d="M3 9h18M9 21V9" />
-        </svg>
-      )
-    case 'storage':
-      return (
-        <svg {...common}>
-          <ellipse cx="12" cy="5" rx="9" ry="3" />
-          <path d="M3 5v14a9 3 0 0 0 18 0V5M3 12a9 3 0 0 0 18 0" />
-        </svg>
-      )
-  }
+  return <Icon name={SECTION_ICON[name]} size={17} />
 }
 
 export function SettingsPanel({ open, onClose }: Props) {
@@ -428,7 +381,7 @@ export function SettingsPanel({ open, onClose }: Props) {
             aria-label={t('common.close')}
             title={`${t('common.close')} (Esc)`}
           >
-            ✕
+            <Icon name="x" size={18} />
           </button>
         </header>
 
@@ -484,7 +437,7 @@ export function SettingsPanel({ open, onClose }: Props) {
                       title={t('settings.makeDefault')}
                       aria-label={t('settings.makeDefault')}
                     >
-                      ★
+                      <Icon name="star" size={16} filled={active.id === s.defaultProviderId} />
                     </button>
                     {s.providers.length > 1 && (
                       <button
@@ -494,7 +447,7 @@ export function SettingsPanel({ open, onClose }: Props) {
                         title={t('settings.deleteProvider')}
                         aria-label={t('settings.deleteProvider')}
                       >
-                        🗑
+                        <Icon name="trash" size={15} />
                       </button>
                     )}
                   </div>
@@ -585,7 +538,7 @@ export function SettingsPanel({ open, onClose }: Props) {
                           title={showKey ? t('settings.hideKey') : t('settings.showKey')}
                           aria-label={showKey ? t('settings.hideKey') : t('settings.showKey')}
                         >
-                          {showKey ? '🙈' : '👁'}
+                          <Icon name={showKey ? 'eye-off' : 'eye'} size={16} />
                         </button>
                         <button
                           type="button"
@@ -598,11 +551,11 @@ export function SettingsPanel({ open, onClose }: Props) {
                       </div>
                       <small className="set-hint">
                         {checkState.status === 'ok' && (
-                          <span className="set-check-ok">✓ {t('settings.checkOk')}</span>
+                          <span className="set-check-ok"><Icon name="check" size={14} /> {t('settings.checkOk')}</span>
                         )}
                         {checkState.status === 'error' && (
                           <span className="set-check-err" title={checkState.message}>
-                            ✕ {checkState.message}
+                            <Icon name="alert" size={14} /> {checkState.message}
                           </span>
                         )}
                         {checkState.status !== 'error' && (
@@ -798,7 +751,7 @@ function ModelManager({
                   aria-label={visionTitle}
                   aria-pressed={caps.vision}
                 >
-                  👁
+                  <Icon name="eye" size={15} />
                 </button>
                 <button
                   type="button"
@@ -807,7 +760,7 @@ function ModelManager({
                   title={isDefault(m) ? t('settings.makeDefault') : t('settings.makeDefault')}
                   aria-label={t('settings.makeDefault')}
                 >
-                  ★
+                  <Icon name="star" size={15} filled={isDefault(m)} />
                 </button>
               </div>
             )
@@ -930,7 +883,7 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
           title="Delete template"
           aria-label="Delete template"
         >
-          🗑
+          <Icon name="trash" size={15} />
         </button>
       </div>
       <input

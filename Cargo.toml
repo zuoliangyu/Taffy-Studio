@@ -28,3 +28,20 @@ debug = "line-tables-only"
 # run noticeably faster. Your own crates stay at opt-level 0 for fast recompiles.
 # Trade-off: the *first* (cold) build is a bit slower — cached builds are not.
 opt-level = 1
+
+[profile.release]
+# Size-tuned release. The Android APK is dominated by the Rust native lib (.so),
+# so these settings shrink it dramatically vs an untuned/debug build:
+#   opt-level "z"  — optimise for size (the JS layer does the heavy lifting, so
+#                    the shell's micro-perf barely matters).
+#   lto "thin"     — cross-crate inlining + dead-code elimination; "thin" keeps
+#                    build time sane vs full LTO while capturing most of the win.
+#   codegen-units 1— better cross-module optimisation / smaller output.
+#   strip "symbols"— drop symbol tables + debuginfo from the binary (the single
+#                    biggest size lever for the .so).
+# panic is intentionally left as "unwind": Tauri's command layer relies on
+# catch_unwind, so "abort" could change error-handling behaviour.
+opt-level = "z"
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

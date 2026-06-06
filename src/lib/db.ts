@@ -42,6 +42,8 @@ export interface Message {
   content: string
   created_at: number
   attachments?: MessageAttachment[]
+  /** Model that produced this assistant reply (multi-model fan-out). */
+  model?: string
 }
 
 export async function initDb(): Promise<void> {
@@ -120,8 +122,9 @@ export function appendMessage(
   role: Message['role'],
   content: string,
   attachments?: MessageAttachment[],
+  model?: string,
 ): Promise<Message> {
-  return api.appendMessage(conversationId, role, content, attachments)
+  return api.appendMessage(conversationId, role, content, attachments, model)
 }
 
 export function listMessages(conversationId: string): Promise<Message[]> {

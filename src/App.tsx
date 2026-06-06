@@ -4,6 +4,7 @@ import { ConvoMenu } from './components/ConvoMenu'
 import { SearchPalette } from './components/SearchPalette'
 import { SettingsPanel } from './components/SettingsPanel'
 import { TemplatePicker } from './components/TemplatePicker'
+import { Icon } from './components/Icon'
 import logoUrl from './assets/logo.png'
 import {
   createConversation,
@@ -215,7 +216,7 @@ export default function App() {
               onClick={() => setDrawerOpen(true)}
               aria-label={t('topbar.openConvos')}
             >
-              ☰
+              <Icon name="menu" size={20} />
             </button>
           )}
 
@@ -234,7 +235,7 @@ export default function App() {
             if (!p) return null
             return (
               <div className="topbar-summary toolbar-chip-strong">
-                <div className="summary-icon">⚡</div>
+                <div className="summary-icon"><Icon name="zap" size={16} /></div>
                 <div className="summary-text">
                   <div className="summary-label">{t('app.provider')}</div>
                   <div className="summary-value">
@@ -260,7 +261,7 @@ export default function App() {
               aria-label={t('topbar.search')}
               title={t('topbar.search')}
             >
-              🔍
+              <Icon name="search" size={19} />
             </button>
             <button
               type="button"
@@ -268,7 +269,7 @@ export default function App() {
               onClick={() => setSettingsOpen(true)}
               aria-label={t('topbar.settings')}
             >
-              ⚙
+              <Icon name="settings" size={19} />
             </button>
           </div>
         </header>
@@ -287,7 +288,7 @@ export default function App() {
                     aria-label={t('sidebar.closeDrawer')}
                     style={{ marginLeft: 4 }}
                   >
-                    ✕
+                    <Icon name="x" size={18} />
                   </button>
                 </>
               )}
@@ -296,7 +297,7 @@ export default function App() {
             <div className="sidebar-actions">
               <div className="new-chat-group">
                 <button className="new-chat-main" onClick={onNewConvo}>
-                  {t('sidebar.newChat')}
+                  <Icon name="plus" size={17} /> {t('sidebar.newChat')}
                 </button>
                 <button
                   type="button"
@@ -306,7 +307,7 @@ export default function App() {
                   aria-label={t('sidebar.templateMenu')}
                   aria-expanded={templatePickerOpen}
                 >
-                  ▾
+                  <Icon name="chevron-down" size={16} />
                 </button>
                 {templatePickerOpen && settings && (
                   <TemplatePicker
@@ -341,7 +342,7 @@ export default function App() {
                   onClick={() => setQuery('')}
                   aria-label={t('sidebar.clearSearch')}
                 >
-                  ✕
+                  <Icon name="x" size={16} />
                 </button>
               )}
             </div>
@@ -363,7 +364,7 @@ export default function App() {
                     onClick={() => onPickConvo(c.id)}
                     onContextMenu={(e) => openMenuForRow(c.id, e)}
                   >
-                    {pinned && <span className="pin-dot" aria-label="Pinned" title="Pinned">★</span>}
+                    {pinned && <span className="pin-dot" aria-label="Pinned" title="Pinned"><Icon name="pin" size={13} filled /></span>}
                     {isRenaming ? (
                       <input
                         ref={renameInputRef}
@@ -397,7 +398,7 @@ export default function App() {
                       title="Actions"
                       onClick={(e) => openMenuForRow(c.id, e)}
                     >
-                      ⋯
+                      <Icon name="more" size={18} />
                     </button>
                   </li>
                 )
@@ -406,8 +407,8 @@ export default function App() {
 
             {isMobile && (
               <div className="sidebar-foot">
-                <button className="ghost full" onClick={() => setSettingsOpen(true)}>
-                  {t('sidebar.settings')}
+                <button className="ghost full settings-full" onClick={() => setSettingsOpen(true)}>
+                  <Icon name="settings" size={17} /> {t('sidebar.settings')}
                 </button>
               </div>
             )}

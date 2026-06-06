@@ -5,6 +5,7 @@
 // a second click in-place instead of using window.confirm() — that's the
 // pattern we already use for the Storage Reset flow.
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { Icon } from './Icon'
 
 interface Props {
   /** Viewport coords (px) the menu should snap near. */
@@ -68,10 +69,10 @@ export function ConvoMenu({ x, y, pinned, onRename, onPin, onDelete, onClose }: 
       {!confirming ? (
         <>
           <button type="button" role="menuitem" onClick={onRename}>
-            Rename
+            <Icon name="pencil" size={15} /> Rename
           </button>
           <button type="button" role="menuitem" onClick={onPin}>
-            {pinned ? 'Unpin' : 'Pin'}
+            <Icon name="pin" size={15} filled={pinned} /> {pinned ? 'Unpin' : 'Pin'}
           </button>
           <div className="convo-menu-sep" />
           <button
@@ -80,7 +81,7 @@ export function ConvoMenu({ x, y, pinned, onRename, onPin, onDelete, onClose }: 
             className="destructive"
             onClick={() => setConfirming(true)}
           >
-            Delete…
+            <Icon name="trash" size={15} /> Delete…
           </button>
         </>
       ) : (

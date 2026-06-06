@@ -5,6 +5,7 @@
 // bytes with <b>…</b>, so dangerouslySetInnerHTML is safe here.
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { searchMessages, type SearchHit } from '../lib/db'
+import { Icon } from './Icon'
 
 interface Props {
   open: boolean
@@ -133,7 +134,7 @@ export function SearchPalette({ open, onClose, onPickConversation }: Props) {
         aria-label="Search messages"
       >
         <div className="search-input-row">
-          <span className="search-icon" aria-hidden="true">🔍</span>
+          <span className="search-icon" aria-hidden="true"><Icon name="search" size={18} /></span>
           <input
             ref={inputRef}
             type="search"
@@ -150,7 +151,7 @@ export function SearchPalette({ open, onClose, onPickConversation }: Props) {
             title="Close (Esc)"
             aria-label="Close"
           >
-            ✕
+            <Icon name="x" size={18} />
           </button>
         </div>
 

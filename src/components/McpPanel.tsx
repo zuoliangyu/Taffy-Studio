@@ -17,6 +17,7 @@ import {
 } from '../lib/mcp'
 import { currentPlatform } from '../lib/mcpMarket'
 import { McpMarket } from './McpMarket'
+import { Icon } from './Icon'
 
 type Status =
   | { state: 'idle' }
@@ -209,7 +210,7 @@ export function McpPanel() {
                           title={t('common.delete')}
                           aria-label={t('common.delete')}
                         >
-                          🗑
+                          <Icon name="trash" size={15} />
                         </button>
                       </div>
                     </div>

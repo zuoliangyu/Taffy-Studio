@@ -418,11 +418,13 @@ export function appendMessage(
   role: Message['role'],
   content: string,
   attachments?: MessageAttachment[],
+  model?: string,
 ): Promise<Message> {
   return postJson<Message>(`${conv(conversationId)}/messages`, {
     role,
     content,
     attachments,
+    model,
   })
 }
 
