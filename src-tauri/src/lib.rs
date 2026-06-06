@@ -654,7 +654,14 @@ fn msg_append(
     model: Option<String>,
     meta: Option<serde_json::Value>,
 ) -> Result<taffy_core::Message, String> {
-    db.append_message(&conversation_id, &role, &content, attachments, model.as_deref(), meta)
+    db.append_message(
+        &conversation_id,
+        &role,
+        &content,
+        attachments,
+        model.as_deref(),
+        meta,
+    )
 }
 
 #[tauri::command]

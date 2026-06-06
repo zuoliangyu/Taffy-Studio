@@ -1282,18 +1282,33 @@ mod tests {
         assert_eq!(list[0].pinned, Some(0));
 
         // Messages append/list, attachments round-trip.
-        db.append_message(&c.id, "user", "hi", None, None, None).unwrap();
-        let atts = serde_json::json!([{ "id": "a1", "type": "image", "name": "x.png" }]);
-        db.append_message(&c.id, "assistant", "yo", Some(atts.clone()), Some("gpt-4o"), None)
+        db.append_message(&c.id, "user", "hi", None, None, None)
             .unwrap();
+        let atts = serde_json::json!([{ "id": "a1", "type": "image", "name": "x.png" }]);
+        db.append_message(
+            &c.id,
+            "assistant",
+            "yo",
+            Some(atts.clone()),
+            Some("gpt-4o"),
+            None,
+        )
+        .unwrap();
         let msgs = db.list_messages(&c.id).unwrap();
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].attachments, None);
         assert_eq!(msgs[1].attachments, Some(atts));
 
         // Empty attachment array normalizes to None.
-        db.append_message(&c.id, "user", "empty", Some(serde_json::json!([])), None, None)
-            .unwrap();
+        db.append_message(
+            &c.id,
+            "user",
+            "empty",
+            Some(serde_json::json!([])),
+            None,
+            None,
+        )
+        .unwrap();
         let msgs = db.list_messages(&c.id).unwrap();
         assert_eq!(msgs[2].attachments, None);
 
