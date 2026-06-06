@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { searchMessages, type SearchHit } from '../lib/db'
 import { Icon } from './Icon'
+import { useI18n } from '../i18n'
 
 interface Props {
   open: boolean
@@ -15,6 +16,7 @@ interface Props {
 }
 
 export function SearchPalette({ open, onClose, onPickConversation }: Props) {
+  const { t } = useI18n()
   const [query, setQuery] = useState('')
   const [hits, setHits] = useState<SearchHit[]>([])
   const [highlight, setHighlight] = useState(0)
@@ -131,7 +133,7 @@ export function SearchPalette({ open, onClose, onPickConversation }: Props) {
         className="search-palette"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
-        aria-label="Search messages"
+        aria-label={t('search.title')}
       >
         <div className="search-input-row">
           <span className="search-icon" aria-hidden="true"><Icon name="search" size={18} /></span>
@@ -139,7 +141,7 @@ export function SearchPalette({ open, onClose, onPickConversation }: Props) {
             ref={inputRef}
             type="search"
             className="search-input"
-            placeholder="Search messages… (trailing * for prefix)"
+            placeholder={t('search.placeholder')}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
           />
@@ -148,8 +150,8 @@ export function SearchPalette({ open, onClose, onPickConversation }: Props) {
             type="button"
             className="ghost icon"
             onClick={onClose}
-            title="Close (Esc)"
-            aria-label="Close"
+            title={t('search.close')}
+            aria-label={t('common.close')}
           >
             <Icon name="x" size={18} />
           </button>
@@ -158,13 +160,10 @@ export function SearchPalette({ open, onClose, onPickConversation }: Props) {
         <div className="search-results" ref={listRef}>
           {error && <div className="storage-error">{error}</div>}
           {!error && query.trim().length === 0 && (
-            <div className="search-empty muted-small">
-              Type to search every message across every conversation. Cmd/Ctrl+K
-              toggles this anywhere.
-            </div>
+            <div className="search-empty muted-small">{t('search.hint')}</div>
           )}
           {!error && query.trim().length > 0 && hits.length === 0 && !busy && (
-            <div className="search-empty muted-small">No matches.</div>
+            <div className="search-empty muted-small">{t('search.noMatches')}</div>
           )}
           {groups.map((g) => (
             <div className="search-group" key={g.id}>
