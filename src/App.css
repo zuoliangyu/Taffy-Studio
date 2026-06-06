@@ -847,8 +847,7 @@ input:focus, select:focus, textarea:focus {
 
 .bubble-role {
   font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.04em;
   color: hsl(var(--muted-foreground));
   margin-bottom: 6px;
   font-weight: 600;
@@ -3835,3 +3834,44 @@ button.icon-only {
   flex-shrink: 0;
 }
 .kb-doc .icon-only { width: 24px; height: 24px; font-size: 11px; }
+
+/* ============================================================
+   Settings → About
+   ============================================================ */
+.about { display: flex; flex-direction: column; gap: 14px; }
+.about-hero { align-items: center; text-align: center; gap: 10px; }
+.about-mark {
+  width: 76px;
+  height: 76px;
+  border-radius: 22px;
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 14px 32px hsl(var(--primary) / 0.22), 0 0 0 1px hsl(var(--border) / 0.5);
+}
+.about-mark img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.about-name { font-size: 18px; font-weight: 700; color: hsl(var(--primary)); }
+.about-update { margin-top: 4px; }
+.about-author { font-size: 14px; font-weight: 600; }
+.about-links { display: flex; flex-direction: column; gap: 8px; }
+.about-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  align-self: flex-start;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid hsl(var(--border) / 0.55);
+  background: var(--surface-1);
+  color: hsl(var(--foreground));
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  box-shadow: none;
+}
+.about-link:hover:not(:disabled) {
+  background: hsl(var(--accent) / 0.5);
+  border-color: hsl(var(--primary) / 0.4);
+  transform: none;
+}
+.about-link .about-ext { color: hsl(var(--muted-foreground)); margin-left: 2px; }
+.is-mobile .about-link { align-self: stretch; }

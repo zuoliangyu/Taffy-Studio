@@ -562,6 +562,8 @@ struct AppendMsg {
     attachments: Option<serde_json::Value>,
     #[serde(default)]
     model: Option<String>,
+    #[serde(default)]
+    meta: Option<serde_json::Value>,
 }
 
 async fn msg_list_h(
@@ -576,7 +578,7 @@ async fn msg_append_h(
     Path(id): Path<String>,
     Json(b): Json<AppendMsg>,
 ) -> Result<Json<Message>, (StatusCode, String)> {
-    db.append_message(&id, &b.role, &b.content, b.attachments, b.model.as_deref())
+    db.append_message(&id, &b.role, &b.content, b.attachments, b.model.as_deref(), b.meta)
         .map(Json)
         .map_err(ise)
 }

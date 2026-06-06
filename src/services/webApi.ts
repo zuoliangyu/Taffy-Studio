@@ -20,6 +20,7 @@ import type {
   ImportSummary,
   Message,
   MessageAttachment,
+  MessageMeta,
   SearchHitRaw,
 } from '../lib/db'
 import type { McpImportResult, McpServerConfig, McpTool } from '../lib/mcp'
@@ -419,12 +420,14 @@ export function appendMessage(
   content: string,
   attachments?: MessageAttachment[],
   model?: string,
+  meta?: MessageMeta,
 ): Promise<Message> {
   return postJson<Message>(`${conv(conversationId)}/messages`, {
     role,
     content,
     attachments,
     model,
+    meta,
   })
 }
 

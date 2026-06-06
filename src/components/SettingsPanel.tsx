@@ -38,6 +38,7 @@ import {
 import type { AssistantTemplate } from '../lib/templates'
 import { StoragePanel } from './StoragePanel'
 import { Icon, type IconName } from './Icon'
+import logoUrl from '../assets/logo.png'
 
 interface Props {
   open: boolean
@@ -53,6 +54,7 @@ type SettingsSection =
   | 'knowledge'
   | 'templates'
   | 'storage'
+  | 'about'
 
 // Result of the "Check" button next to the API key.
 type CheckState =
@@ -80,6 +82,7 @@ const SECTIONS: { key: SettingsSection; labelKey: TKey }[] = [
   { key: 'knowledge', labelKey: 'settings.knowledge' },
   { key: 'templates', labelKey: 'settings.templates' },
   { key: 'storage', labelKey: 'settings.storage' },
+  { key: 'about', labelKey: 'settings.about' },
 ]
 
 // Maps each settings section to a shared Icon glyph (single source of truth —
@@ -92,6 +95,7 @@ const SECTION_ICON: Record<SettingsSection, IconName> = {
   knowledge: 'book',
   templates: 'layout',
   storage: 'database',
+  about: 'info',
 }
 
 function SectionIcon({ name }: { name: SettingsSection }) {
@@ -652,6 +656,7 @@ export function SettingsPanel({ open, onClose }: Props) {
               />
             )}
             {section === 'storage' && <StoragePanel />}
+            {section === 'about' && <AboutSection />}
           </div>
         </div>
 
@@ -949,6 +954,128 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
           placeholder="Optional. Prepended at request time to every conversation built from this template."
         />
       </label>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// About — author, links, and an update check. External links + the updater are
+// Tauri-only; they degrade gracefully (no-op / window.open) on the web shell.
+// ---------------------------------------------------------------------------
+
+const REPO_URL = 'https://github.com/zuoliangyu/Taffy-Studio'
+const AUTHOR_GITHUB = 'https://github.com/zuoliangyu'
+const BILIBILI_URL = 'https://space.bilibili.com/27619688'
+
+async function openExternal(url: string) {
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell')
+    await open(url)
+  } catch {
+    try {
+      window.open(url, '_blank', 'noopener')
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+type UpdateState =
+  | { kind: 'idle' }
+  | { kind: 'checking' }
+  | { kind: 'uptodate' }
+  | { kind: 'available'; version: string }
+  | { kind: 'error' }
+
+function AboutSection() {
+  const { t } = useI18n()
+  const [version, setVersion] = useState('')
+  const [upd, setUpd] = useState<UpdateState>({ kind: 'idle' })
+
+  useEffect(() => {
+    import('@tauri-apps/api/app')
+      .then((m) => m.getVersion())
+      .then(setVersion)
+      .catch(() => {})
+  }, [])
+
+  async function checkUpdate() {
+    setUpd({ kind: 'checking' })
+    try {
+      const { check } = await import('@tauri-apps/plugin-updater')
+      const update = await check()
+      setUpd(update ? { kind: 'available', version: update.version } : { kind: 'uptodate' })
+    } catch {
+      setUpd({ kind: 'error' })
+    }
+  }
+
+  return (
+    <div className="about">
+      <div className="set-card about-hero">
+        <div className="about-mark">
+          <img src={logoUrl} alt="Taffy Studio" />
+        </div>
+        <div className="about-name">Taffy Studio</div>
+        {version && (
+          <div className="muted-small">
+            {t('about.version')} {version}
+          </div>
+        )}
+        <button
+          type="button"
+          className="set-btn outline about-update"
+          onClick={checkUpdate}
+          disabled={upd.kind === 'checking'}
+        >
+          <Icon name="refresh" size={15} />{' '}
+          {upd.kind === 'checking' ? t('about.checking') : t('about.checkUpdate')}
+        </button>
+        {upd.kind === 'uptodate' && (
+          <div className="set-check-ok">
+            <Icon name="check" size={14} /> {t('about.upToDate')}
+          </div>
+        )}
+        {upd.kind === 'available' && (
+          <button type="button" className="about-link" onClick={() => openExternal(REPO_URL + '/releases/latest')}>
+            <Icon name="download" size={15} /> {t('about.updateAvailable', { v: upd.version })}
+          </button>
+        )}
+        {upd.kind === 'error' && (
+          <div className="set-check-err">
+            <Icon name="alert" size={14} /> {t('about.updateError')}
+          </div>
+        )}
+      </div>
+
+      <div className="set-card">
+        <div className="set-card-title">
+          {t('about.author')} <span className="set-line" />
+        </div>
+        <div className="about-author">左岚 · zuoliangyu</div>
+        <div className="about-links">
+          <button type="button" className="about-link" onClick={() => openExternal(BILIBILI_URL)}>
+            <Icon name="globe" size={15} /> {t('about.bilibili')}
+            <Icon name="external" size={13} className="about-ext" />
+          </button>
+          <button type="button" className="about-link" onClick={() => openExternal(AUTHOR_GITHUB)}>
+            <Icon name="github" size={15} /> {t('about.authorGithub')}
+            <Icon name="external" size={13} className="about-ext" />
+          </button>
+        </div>
+      </div>
+
+      <div className="set-card">
+        <div className="set-card-title">
+          {t('about.openSource')} <span className="set-line" />
+        </div>
+        <div className="about-links">
+          <button type="button" className="about-link" onClick={() => openExternal(REPO_URL)}>
+            <Icon name="github" size={15} /> {t('about.repo')}
+            <Icon name="external" size={13} className="about-ext" />
+          </button>
+        </div>
+      </div>
     </div>
   )
 }

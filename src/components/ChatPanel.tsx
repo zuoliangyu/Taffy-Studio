@@ -11,7 +11,7 @@ import {
   type Message as DbMessage,
 } from '../lib/db'
 import { getModelCapabilities } from '../lib/capabilities'
-import { chatStream, type Attachment, type ChatMessage, type StreamHandle } from '../lib/llm'
+import { chatStream, type Attachment, type ChatMessage, type StreamHandle, type Usage } from '../lib/llm'
 import { fileToAttachment } from '../lib/attachments'
 import { attachmentTextBlock } from '../lib/doctext'
 import { ocrImage } from '../lib/ocr'
@@ -65,6 +65,18 @@ interface MultiSlot extends ModelRef {
   done?: boolean
   /** Wall-clock generation time in ms, set when the stream finishes. */
   elapsedMs?: number
+  /** Token usage reported by the provider, if any. */
+  usage?: Usage
+}
+
+/** Format a " · 1.2s · 345 tok" suffix from generation time + token usage. */
+function metaSuffix(elapsedMs?: number, usage?: Usage): string {
+  const parts: string[] = []
+  if (elapsedMs !== undefined) parts.push(`${(elapsedMs / 1000).toFixed(1)}s`)
+  if (usage && (usage.promptTokens || usage.completionTokens)) {
+    parts.push(`${usage.promptTokens}+${usage.completionTokens} tok`)
+  }
+  return parts.length ? ` · ${parts.join(' · ')}` : ''
 }
 
 /** Dedupe a list of model refs by providerId+model, preserving order. */
@@ -295,6 +307,8 @@ export function ChatPanel({
       setToolActivity([])
       let acc = ''
       let cancelled = false
+      let usage: Usage | undefined
+      const startedAt = Date.now()
 
       // Fold any document / OCR text from attachments into message content so
       // non-vision / non-file-upload providers still see it.
@@ -361,6 +375,7 @@ export function ChatPanel({
               setDraft(acc)
             } else if (e.type === 'done') {
               acc = e.content || acc
+              usage = e.usage
             } else if (e.type === 'cancelled') {
               cancelled = true
               acc = e.content || acc
@@ -389,15 +404,23 @@ export function ChatPanel({
       }
 
       if (acc) {
+        const meta = { usage, elapsedMs: Date.now() - startedAt }
         let saved: DbMessage
         try {
-          saved = await appendMessage(conversationId, 'assistant', acc)
+          saved = await appendMessage(
+            conversationId,
+            'assistant',
+            acc,
+            undefined,
+            target.model,
+            meta,
+          )
         } catch (e) {
           console.error('failed to persist assistant message:', e)
           setError(`Could not save assistant reply: ${e}`)
           return null
         }
-        setMessages((m) => [...m, saved])
+        setMessages((m) => [...m, { ...saved, meta }])
 
         // First exchange complete? Trigger background title summarization
         // (fire-and-forget; never blocks the user). Only touch the default
@@ -499,6 +522,7 @@ export function ChatPanel({
 
       setMultiDrafts(ok.map(({ ref }) => ({ ...ref, text: '' })))
       const accs = ok.map(() => '')
+      const metas: { usage?: Usage; elapsedMs?: number }[] = ok.map(() => ({}))
       streamRefsRef.current = []
 
       await Promise.all(
@@ -540,9 +564,11 @@ export function ChatPanel({
                   } else if (e.type === 'done' || e.type === 'cancelled') {
                     acc = e.content || acc
                     const ms = Date.now() - startedAt
+                    const u = e.type === 'done' ? e.usage : undefined
+                    metas[i] = { usage: u, elapsedMs: ms }
                     setMultiDrafts((s) =>
                       s.map((x, j) =>
-                        j === i ? { ...x, text: acc, done: true, elapsedMs: ms } : x,
+                        j === i ? { ...x, text: acc, done: true, elapsedMs: ms, usage: u } : x,
                       ),
                     )
                   } else if (e.type === 'error') {
@@ -573,14 +599,17 @@ export function ChatPanel({
         const entry = ok[i]
         if (!content || !entry) continue
         try {
+          const meta = metas[i] ?? {}
           const saved = await appendMessage(
             conversationId,
             'assistant',
             content,
             undefined,
             entry.ref.model,
+            meta,
           )
-          setMessages((m) => [...m, saved])
+          // saved already carries meta back from the DB; keep the in-memory copy.
+          setMessages((m) => [...m, { ...saved, meta }])
         } catch (e) {
           console.error('failed to persist assistant message:', e)
           setError(`Could not save assistant reply: ${e}`)
@@ -923,7 +952,11 @@ export function ChatPanel({
                           role={m.role}
                           content={m.content}
                           attachments={m.attachments}
-                          label={m.model ?? undefined}
+                          label={
+                            m.model
+                              ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
+                              : undefined
+                          }
                           onCopy={() => void navigator.clipboard?.writeText(m.content)}
                           onRegenerate={
                             !streaming && isLastGroup && m.model
@@ -963,6 +996,11 @@ export function ChatPanel({
                   role={m.role}
                   content={m.content}
                   attachments={m.attachments}
+                  label={
+                    m.role === 'assistant' && m.model
+                      ? `${m.model}${metaSuffix(m.meta?.elapsedMs, m.meta?.usage)}`
+                      : undefined
+                  }
                   onCopy={() => void navigator.clipboard?.writeText(m.content)}
                   onEdit={
                     m.role === 'user' && !streaming
@@ -1008,11 +1046,7 @@ export function ChatPanel({
                 <Bubble
                   role="assistant"
                   content={d.text}
-                  label={
-                    d.done && d.elapsedMs !== undefined
-                      ? `${d.model} · ${(d.elapsedMs / 1000).toFixed(1)}s`
-                      : d.model
-                  }
+                  label={d.done ? `${d.model}${metaSuffix(d.elapsedMs, d.usage)}` : d.model}
                   pending={!d.done}
                 />
                 {d.error && (

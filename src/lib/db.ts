@@ -35,6 +35,12 @@ export interface MessageAttachment {
   text?: string
 }
 
+/** Per-message metadata (token usage + generation time), JSON in the DB. */
+export interface MessageMeta {
+  usage?: { promptTokens: number; completionTokens: number }
+  elapsedMs?: number
+}
+
 export interface Message {
   id: string
   conversation_id: string
@@ -44,6 +50,8 @@ export interface Message {
   attachments?: MessageAttachment[]
   /** Model that produced this assistant reply (multi-model fan-out). */
   model?: string
+  /** Token usage + timing for assistant replies. */
+  meta?: MessageMeta
 }
 
 export async function initDb(): Promise<void> {
@@ -123,8 +131,9 @@ export function appendMessage(
   content: string,
   attachments?: MessageAttachment[],
   model?: string,
+  meta?: MessageMeta,
 ): Promise<Message> {
-  return api.appendMessage(conversationId, role, content, attachments, model)
+  return api.appendMessage(conversationId, role, content, attachments, model, meta)
 }
 
 export function listMessages(conversationId: string): Promise<Message[]> {

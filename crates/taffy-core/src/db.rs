@@ -126,6 +126,8 @@ const MIGRATIONS: &[&str] = &[
     // reply with the model that produced it, for column rendering + per-model
     // history).
     "ALTER TABLE messages ADD COLUMN model TEXT NULL;",
+    // v11 — per-message metadata JSON (token usage + generation time).
+    "ALTER TABLE messages ADD COLUMN meta TEXT NULL;",
 ];
 
 fn table_exists(conn: &Connection, name: &str) -> bool {
@@ -182,6 +184,7 @@ fn detect_baseline(conn: &Connection) -> i64 {
         (8, |c| table_exists(c, "knowledge_bases")),
         (9, |c| table_exists(c, "kv")),
         (10, |c| column_exists(c, "messages", "model")),
+        (11, |c| column_exists(c, "messages", "meta")),
     ];
     for (ver, present) in checks {
         if present(conn) {
@@ -268,6 +271,9 @@ pub struct Message {
     /// user/system/tool turns and legacy rows.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model: Option<String>,
+    /// Free-form JSON metadata (token usage + generation time).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta: Option<serde_json::Value>,
 }
 
 // ---------- RAG DTOs (local knowledge bases) ----------
@@ -581,11 +587,17 @@ impl Db {
         content: &str,
         attachments: Option<serde_json::Value>,
         model: Option<&str>,
+        meta: Option<serde_json::Value>,
     ) -> Result<Message, String> {
         let now = now_ms();
         let attachments =
             attachments.filter(|v| !matches!(v, serde_json::Value::Array(a) if a.is_empty()));
         let attachments_json = match &attachments {
+            Some(v) => Some(serde_json::to_string(v).map_err(e2s)?),
+            None => None,
+        };
+        let meta = meta.filter(|v| !v.is_null());
+        let meta_json = match &meta {
             Some(v) => Some(serde_json::to_string(v).map_err(e2s)?),
             None => None,
         };
@@ -597,11 +609,12 @@ impl Db {
             created_at: now,
             attachments,
             model: model.map(|s| s.to_string()),
+            meta,
         };
         let conn = self.lock();
         conn.execute(
-            "INSERT INTO messages (id, conversation_id, role, content, created_at, attachments, model) \
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            "INSERT INTO messages (id, conversation_id, role, content, created_at, attachments, model, meta) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
                 row.id,
                 row.conversation_id,
@@ -610,6 +623,7 @@ impl Db {
                 row.created_at,
                 attachments_json,
                 row.model,
+                meta_json,
             ],
         )
         .map_err(e2s)?;
@@ -625,7 +639,7 @@ impl Db {
         let conn = self.lock();
         let mut stmt = conn
             .prepare(
-                "SELECT id, conversation_id, role, content, created_at, attachments, model \
+                "SELECT id, conversation_id, role, content, created_at, attachments, model, meta \
                  FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
             )
             .map_err(e2s)?;
@@ -970,7 +984,7 @@ impl Db {
             .map_err(e2s)?;
         let mut msg_stmt = conn
             .prepare(
-                "SELECT id, conversation_id, role, content, created_at, attachments, model \
+                "SELECT id, conversation_id, role, content, created_at, attachments, model, meta \
                  FROM messages WHERE conversation_id = ?1 ORDER BY created_at ASC",
             )
             .map_err(e2s)?;
@@ -1225,6 +1239,10 @@ fn row_to_message(r: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
     let attachments = attachments_raw
         .filter(|s| !s.is_empty())
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
+    let meta_raw: Option<String> = r.get(7)?;
+    let meta = meta_raw
+        .filter(|s| !s.is_empty())
+        .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
     Ok(Message {
         id: r.get(0)?,
         conversation_id: r.get(1)?,
@@ -1233,6 +1251,7 @@ fn row_to_message(r: &rusqlite::Row<'_>) -> rusqlite::Result<Message> {
         created_at: r.get(4)?,
         attachments,
         model: r.get(6)?,
+        meta,
     })
 }
 
@@ -1263,9 +1282,9 @@ mod tests {
         assert_eq!(list[0].pinned, Some(0));
 
         // Messages append/list, attachments round-trip.
-        db.append_message(&c.id, "user", "hi", None, None).unwrap();
+        db.append_message(&c.id, "user", "hi", None, None, None).unwrap();
         let atts = serde_json::json!([{ "id": "a1", "type": "image", "name": "x.png" }]);
-        db.append_message(&c.id, "assistant", "yo", Some(atts.clone()), Some("gpt-4o"))
+        db.append_message(&c.id, "assistant", "yo", Some(atts.clone()), Some("gpt-4o"), None)
             .unwrap();
         let msgs = db.list_messages(&c.id).unwrap();
         assert_eq!(msgs.len(), 2);
@@ -1273,7 +1292,7 @@ mod tests {
         assert_eq!(msgs[1].attachments, Some(atts));
 
         // Empty attachment array normalizes to None.
-        db.append_message(&c.id, "user", "empty", Some(serde_json::json!([])), None)
+        db.append_message(&c.id, "user", "empty", Some(serde_json::json!([])), None, None)
             .unwrap();
         let msgs = db.list_messages(&c.id).unwrap();
         assert_eq!(msgs[2].attachments, None);
@@ -1398,9 +1417,9 @@ mod tests {
         let c = db
             .create_conversation("Trip", &ConversationInit::default())
             .unwrap();
-        db.append_message(&c.id, "user", "hello kangaroo", None, None)
+        db.append_message(&c.id, "user", "hello kangaroo", None, None, None)
             .unwrap();
-        db.append_message(&c.id, "assistant", "the kangaroo hops", None, None)
+        db.append_message(&c.id, "assistant", "the kangaroo hops", None, None, None)
             .unwrap();
 
         // FTS: prefix match on a quoted token, snippet markers present.
