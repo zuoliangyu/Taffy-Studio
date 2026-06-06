@@ -1295,10 +1295,11 @@ input:focus, select:focus, textarea:focus {
   display: flex;
   gap: 8px;
   align-items: center;
+  justify-content: flex-start;
 }
 .overrides-input-wrap input[type="number"] {
-  flex: 1;
-  width: auto;
+  flex: 0 0 150px;
+  width: 150px;
   font-size: 13px;
   padding: 8px 10px;
   border: 1px solid hsl(var(--border) / 0.6);
@@ -2334,9 +2335,9 @@ button .icon-svg,
 .msg-columns {
   align-self: stretch;
   display: flex;
-  /* Each card hugs its own content height — without this, flex stretches every
-     column to the tallest one, leaving a big empty gap under shorter replies. */
-  align-items: flex-start;
+  /* Equal-height columns so the cards line up as a tidy comparison grid
+     (tops AND bottoms aligned). */
+  align-items: stretch;
   gap: 12px;
   overflow-x: auto;
   padding-bottom: 6px;
@@ -2354,12 +2355,14 @@ button .icon-svg,
   gap: 6px;
   scroll-snap-align: start;
 }
-/* Inside a column the assistant bubble fills the column width, with a uniform
-   radius (no speech-bubble tail) and a soft, even shadow — the default
-   asymmetric corner + heavier drop shadow looked off side-by-side. */
+/* Inside a column the assistant bubble fills the column's width AND its
+   (equal) height, with a uniform radius (no speech-bubble tail) and a soft,
+   even shadow — the default asymmetric corner + heavier drop shadow looked off
+   side-by-side. */
 .msg-column .bubble {
   max-width: 100%;
   align-self: stretch;
+  flex: 1;
   border-radius: 16px;
   box-shadow: 0 2px 10px rgba(72, 92, 140, 0.06);
 }

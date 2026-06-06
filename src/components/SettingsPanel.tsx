@@ -832,14 +832,11 @@ function TemplatesEditor({
   onDelete,
   onAdd,
 }: TEProps) {
+  const { t } = useI18n()
   return (
     <div className="templates-editor">
       {templates.length === 0 ? (
-        <p className="muted-small">
-          No templates yet. Click <strong>Add template</strong> below to create one,
-          or restart with the default presets by deleting <code>settingsV2</code>{' '}
-          from the Storage panel.
-        </p>
+        <p className="muted-small">{t('tpl.empty')}</p>
       ) : (
         templates.map((t) => (
           <TemplateCard
@@ -853,7 +850,7 @@ function TemplatesEditor({
       )}
       <div className="templates-editor-foot">
         <button type="button" className="ghost small" onClick={onAdd}>
-          + Add template
+          <Icon name="plus" size={14} /> {t('tpl.add')}
         </button>
       </div>
     </div>
@@ -868,6 +865,7 @@ interface TCProps {
 }
 
 function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
+  const { t } = useI18n()
   const provider = providers.find((p) => p.id === template.providerId)
   // Model options only make sense after a specific provider is picked;
   // "inherit" disables the model field entirely.
@@ -879,14 +877,14 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
           className="template-card-name"
           value={template.name}
           onChange={(e) => onPatch({ name: e.target.value })}
-          placeholder="Template name"
+          placeholder={t('tpl.namePlaceholder')}
         />
         <button
           type="button"
           className="icon-only destructive-btn"
           onClick={onDelete}
-          title="Delete template"
-          aria-label="Delete template"
+          title={t('tpl.deleteTemplate')}
+          aria-label={t('tpl.deleteTemplate')}
         >
           <Icon name="trash" size={15} />
         </button>
@@ -895,11 +893,11 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
         className="template-card-desc"
         value={template.description ?? ''}
         onChange={(e) => onPatch({ description: e.target.value || undefined })}
-        placeholder="One-liner shown in the picker (optional)"
+        placeholder={t('tpl.descPlaceholder')}
       />
       <div className="template-card-row">
         <label className="template-field">
-          <span>Provider</span>
+          <span>{t('tpl.provider')}</span>
           <select
             value={template.providerId ?? ''}
             onChange={(e) => {
@@ -908,28 +906,28 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
               onPatch({ providerId: next, model: null })
             }}
           >
-            <option value="">(global default)</option>
+            <option value="">{t('tpl.globalDefault')}</option>
             {providers.map((p) => (
               <option key={p.id} value={p.id}>{p.name}</option>
             ))}
           </select>
         </label>
         <label className="template-field">
-          <span>Model</span>
+          <span>{t('tpl.model')}</span>
           <select
             value={template.model ?? ''}
             onChange={(e) => onPatch({ model: e.target.value || null })}
             disabled={!provider}
-            title={provider ? undefined : 'Pick a provider first'}
+            title={provider ? undefined : t('tpl.pickProviderFirst')}
           >
-            <option value="">{provider ? '(provider default)' : '(inherit)'}</option>
+            <option value="">{provider ? t('tpl.providerDefault') : t('tpl.inherit')}</option>
             {modelOptions.map((m) => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
         </label>
         <label className="template-field template-field-num">
-          <span>Temp.</span>
+          <span>{t('tpl.temp')}</span>
           <input
             type="number"
             min="0"
@@ -941,17 +939,17 @@ function TemplateCard({ template, providers, onPatch, onDelete }: TCProps) {
               const n = v === '' ? null : Number.parseFloat(v)
               onPatch({ temperature: n === null || Number.isFinite(n) ? n : null })
             }}
-            placeholder="auto"
+            placeholder={t('tpl.tempPlaceholder')}
           />
         </label>
       </div>
       <label className="template-field template-field-prompt">
-        <span>System prompt</span>
+        <span>{t('tpl.systemPrompt')}</span>
         <textarea
           rows={4}
           value={template.systemPrompt ?? ''}
           onChange={(e) => onPatch({ systemPrompt: e.target.value })}
-          placeholder="Optional. Prepended at request time to every conversation built from this template."
+          placeholder={t('tpl.systemPromptPlaceholder')}
         />
       </label>
     </div>
