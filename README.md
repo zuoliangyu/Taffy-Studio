@@ -6,7 +6,7 @@
 
 **一套代码，七端交付的大模型工作站 —— 基于 Tauri 2 + React + 共享 Rust 核心。**
 
-OpenAI / Anthropic / Gemini 原生协议 · 流式输出 · MCP 工具 + 技能 · 知识库(RAG) · 系统密钥环 · 玻璃拟态 UI
+OpenAI / Anthropic / Gemini 原生协议 · 流式输出 · 多模型对比 · MCP 工具 + 技能 · 知识库(RAG) · 系统密钥环 · 移动优先 Material You UI
 Windows · macOS · Linux · iOS · Android · 浏览器单文件 · Docker
 
 [![CI](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml/badge.svg)](https://github.com/zuoliangyu/Taffy-Studio/actions/workflows/ci.yml)
@@ -50,13 +50,14 @@ Windows · macOS · Linux · iOS · Android · 浏览器单文件 · Docker
 - 🌐 **一套代码，七种交付** —— Windows / macOS / Linux / iOS / Android 五个原生端（Tauri 2），外加**浏览器单文件**自托管服务与 **Docker** 镜像。
 - 🤖 **多服务商，原生协议** —— OpenAI 兼容（OpenAI / DeepSeek / SiliconFlow / Ollama / 任意 base URL）、**Anthropic** `/v1/messages`、**Gemini** `streamGenerateContent`。按服务商自动拉取模型列表。
 - 🚀 **流式优先** —— 逐 token 推送（桌面走 `tauri::ipc::Channel`，Web 走 SSE），内置停止 / 重新生成。
+- ⚖️ **多模型并行对比** —— 一条消息同时发给多个模型（头部「对比」多选或 `@模型`），回答**并排分栏**展示,可逐列/整批重试;每条回复显示 token 用量与耗时（可关）。
 - 🧩 **MCP 工具 + 市场** —— 接入 MCP 服务器（stdio 本地 + Streamable HTTP 远程），内置 agentic 工具调用循环（OpenAI & Anthropic），并带一个可一键导入的 **MCP 市场**。
 - 🛠 **技能（Skills）** —— `SKILL.md` 形式的可复用提示/能力包，支持导入与按会话启用。
 - 📚 **知识库 / RAG** —— 本地向量库（余弦检索），按会话注入检索上下文。
 - 📎 **附件与 OCR** —— 图片（视觉模型）、PDF / 文本文档（客户端抽取文本拼进 prompt）；非视觉模型用 Tesseract.js 兜底识图。
 - 📝 **富文本渲染** —— GitHub 风味 Markdown、代码高亮（带复制）、KaTeX 公式、Mermaid 图表（懒加载）。
 - 🔐 **密钥安全** —— API 密钥存**系统密钥环**（Windows 凭据管理器 / macOS 钥匙串 / Linux libsecret）；服务器版从环境变量注入，浏览器永不接触密钥。
-- 🎨 **玻璃拟态 UI** —— HSL 令牌体系、蓝灰玻璃质感、跟随系统/浅色/深色主题、< 760px 侧栏折叠为抽屉，移动端适配安全区。
+- 🎨 **移动优先的 Material You 界面** —— 统一的线条图标、圆形发送钮、逐条消息操作栏、品牌化空状态;跟随系统/浅色/深色主题;< 760px 侧栏折叠为抽屉、设置转为全屏 sheet + 胶囊 tab,窄屏(320px)适配并尊重安全区。
 - 🌍 **国际化** —— 英文 + 简体中文，自动识别系统语言并可手动切换。
 
 ## 📸 截图
